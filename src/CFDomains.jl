@@ -1,7 +1,5 @@
 module CFDomains
 
-using ManagedLoops: ManagedLoops, @loops, @vec
-
 # Domain types
 export AbstractDomain, SpectralDomain, SpectralSphere, FDDomain
 """
@@ -37,6 +35,7 @@ export vectorfield, vectorfield!, cvectorfield, cvectorfield!
 @inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type) = allocate_field(Val(sym), nq, domain, F)
 @inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, backend) = allocate_field(Val(sym), domain, F, backend)
 @inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, backend) = allocate_field(Val(sym), nq, domain, F, backend)
+
 # @inline allocate_field(::Val{:scalar},  args...) = allocate_scalar(args...)
 # @inline allocate_field(::Val{:cvector}, args...) = allocate_cvector(args...)
 # @inline allocate_field(::Val{:vector},  args...) = allocate_vector(args...)
@@ -87,7 +86,7 @@ allocate_field(val::Val, domain::Shell{nz}, F, backend) where nz = allocate_shel
 allocate_field(val::Val, nq::Int, domain::Shell{nz}, F, backend) where nz = allocate_shell(val, domain.layer, nz, nq, F, backend)
 
 # belongs to ManagedLoops
-array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
+# array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
 # array(T, backend::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), backend)
 # array(T, backend::Loops.WrapperBackend, size...) = array(T, backend.backend, size...)
 
@@ -97,6 +96,7 @@ array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, 
 @inline primal(domain::Shell{nz}) where nz = Shell(primal(domain.layer), nz)
 
 #============= Spherical harmonics on the unit sphere ==========#
+
 "Parent type for spherical domains using spherical harmonics."
 abstract type SpectralSphere <: SpectralDomain end
 
