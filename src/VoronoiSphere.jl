@@ -75,16 +75,18 @@ end
 
 #====================== Allocate ======================#
 
-allocate_field(::Val{:scalar}, dom::VSph, F::Type{<:Real}, backend=nothing) = array(F, backend, length(dom.Ai))
-allocate_field(::Val{:dual},   dom::VSph, F::Type{<:Real}, backend=nothing) = array(F, backend, length(dom.Av))
-allocate_field(::Val{:vector}, dom::VSph, F::Type{<:Real}, backend=nothing) = array(F, backend, length(dom.le))
+array(::Nothing, dom::VSph, F, dims...) = similar(dom.Ai, F, dims...)
 
-allocate_shell(::Val{:scalar}, dom::VSph, nz, F::Type, backend=nothing) = array(F, backend, nz, length(dom.Ai))
-allocate_shell(::Val{:dual},   dom::VSph, nz, F::Type, backend=nothing) = array(F, backend, nz, length(dom.Av))
-allocate_shell(::Val{:vector}, dom::VSph, nz, F::Type, backend=nothing) = array(F, backend, nz, length(dom.le))
-allocate_shell(::Val{:scalar}, dom::VSph, nz, nq, F::Type, backend=nothing) = array(F, backend, nz, length(dom.Ai), nq)
-allocate_shell(::Val{:dual},   dom::VSph, nz, nq, F::Type, backend=nothing) = array(F, backend, nz, length(dom.Av), nq)
-allocate_shell(::Val{:vector}, dom::VSph, nz, nq, F::Type, backend=nothing) = array(F, backend, nz, length(dom.le), nq)
+allocate_field(::Val{:scalar}, dom::VSph, F::Type{<:Real}, backend=nothing) = array(backend, dom, F, length(dom.Ai))
+allocate_field(::Val{:dual},   dom::VSph, F::Type{<:Real}, backend=nothing) = array(backend, dom, F, length(dom.Av))
+allocate_field(::Val{:vector}, dom::VSph, F::Type{<:Real}, backend=nothing) = array(backend, dom, F, length(dom.le))
+
+allocate_shell(::Val{:scalar}, dom::VSph, nz, F::Type, backend=nothing) = array(backend, dom, F, nz, length(dom.Ai))
+allocate_shell(::Val{:dual},   dom::VSph, nz, F::Type, backend=nothing) = array(backend, dom, F, nz, length(dom.Av))
+allocate_shell(::Val{:vector}, dom::VSph, nz, F::Type, backend=nothing) = array(backend, dom, F, length(dom.le))
+allocate_shell(::Val{:scalar}, dom::VSph, nz, nq, F::Type, backend=nothing) = array(backend, dom, F, length(dom.Ai), nq)
+allocate_shell(::Val{:dual},   dom::VSph, nz, nq, F::Type, backend=nothing) = array(backend, dom, F, length(dom.Av), nq)
+allocate_shell(::Val{:vector}, dom::VSph, nz, nq, F::Type, backend=nothing) = array(backend, dom, F, length(dom.le), nq)
 
 @inline periodize!(data, ::Shell{Nz,<:VSph}, backend) where Nz = data
 @inline periodize!(data, ::Shell{Nz,<:VSph}) where Nz = data
