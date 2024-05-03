@@ -15,7 +15,6 @@ parent type of [`SpectralSphere`](@ref)
 abstract type SpectralDomain <: AbstractDomain end
 """
     FDDomain <: AbstractDomain`
-Parent type of [`Box2D`](@ref) and [`Box3D`](@ref)
 """
 abstract type FDDomain <: AbstractDomain end
 
