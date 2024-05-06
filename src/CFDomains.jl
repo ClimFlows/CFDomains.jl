@@ -1,7 +1,9 @@
 module CFDomains
+using MutatingOrNot: void, Void
+using ManagedLoops: @loops, @unroll
 
-# Domain types
-export AbstractDomain, SpectralDomain, SpectralSphere, FDDomain
+#====================  Domain types ====================#
+
 """
 Parent type of [`SpectralDomain`](@ref) and [`FDDomain`](@ref)
 """
@@ -30,11 +32,11 @@ export vectorfield, vectorfield!, cvectorfield, cvectorfield!
 
 @inline allocate_fields(syms::NamedTuple, domain::AbstractDomain, F::Type) = map(sym->allocate_field(Val(sym), domain, F), syms)
 @inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type) = Tuple( allocate_field(Val(sym), domain, F) for sym in syms )
-@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type, backend) = Tuple( allocate_field(Val(sym), domain, F, backend) for sym in syms )
+@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type, mgr) = Tuple( allocate_field(Val(sym), domain, F, mgr) for sym in syms )
 @inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type) = allocate_field(Val(sym), domain, F)
 @inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type) = allocate_field(Val(sym), nq, domain, F)
-@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, backend) = allocate_field(Val(sym), domain, F, backend)
-@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, backend) = allocate_field(Val(sym), nq, domain, F, backend)
+@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), domain, F, mgr)
+@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), nq, domain, F, mgr)
 
 # @inline allocate_field(::Val{:scalar},  args...) = allocate_scalar(args...)
 # @inline allocate_field(::Val{:cvector}, args...) = allocate_cvector(args...)
@@ -46,7 +48,7 @@ dotprod_cvector(a,b) = real(conj(a)*b)
 meshgrid(ai, bj) = [a for a in ai, b in bj], [b for a in ai, b in bj]
 
 """
-    periodize!(data, box::AbstractBox, backend)
+    periodize!(data, box::AbstractBox, mgr)
 Enforce horizontally-periodic boundary conditions on array `data` representing
 grid point values in `box`. `data` may also be a collection, in which case
 `periodize!` is applied to each element of the collection. Call `periodize!`
@@ -82,18 +84,22 @@ Shell(sphere::M, nz) where M = Shell{nz,M}(sphere)
 
 allocate_field(val::Val, domain::Shell{nz}, F) where nz = allocate_shell(val, domain.layer, nz, F)
 allocate_field(val::Val, nq::Int, domain::Shell{nz}, F) where nz = allocate_shell(val, domain.layer, nz, nq, F)
-allocate_field(val::Val, domain::Shell{nz}, F, backend) where nz = allocate_shell(val, domain.layer, nz, F, backend)
-allocate_field(val::Val, nq::Int, domain::Shell{nz}, F, backend) where nz = allocate_shell(val, domain.layer, nz, nq, F, backend)
+allocate_field(val::Val, domain::Shell{nz}, F, mgr) where nz = allocate_shell(val, domain.layer, nz, F, mgr)
+allocate_field(val::Val, nq::Int, domain::Shell{nz}, F, mgr) where nz = allocate_shell(val, domain.layer, nz, nq, F, mgr)
 
 # belongs to ManagedLoops
 # array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
-# array(T, backend::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), backend)
-# array(T, backend::Loops.WrapperBackend, size...) = array(T, backend.backend, size...)
+# array(T, mgr::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), mgr)
+# array(T, mgr::Loops.WrapperBackend, size...) = array(T, mgr.mgr, size...)
 
 @inline ijk( ::Type{Shell{nz, M}}, ij, k) where {nz, M} = (ij-1)*nz + k
 @inline kplus( ::Type{Shell{nz, M}})      where {nz, M} = 1
 
 @inline primal(domain::Shell{nz}) where nz = Shell(primal(domain.layer), nz)
+
+#================ Numerical filters =================#
+
+include("filters.jl")
 
 #============= Spherical harmonics on the unit sphere ==========#
 

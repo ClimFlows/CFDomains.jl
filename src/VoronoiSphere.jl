@@ -202,3 +202,44 @@ end
     sum(weights[iedge,ij,1]*ucov[edges[iedge,ij]] for iedge=1:deg),
     sum(weights[iedge,ij,2]*ucov[edges[iedge,ij]] for iedge=1:deg),
     sum(weights[iedge,ij,3]*ucov[edges[iedge,ij]] for iedge=1:deg) )
+
+#========================== Hyperviscous filter ===========================#
+
+allocate_hyperdiff(sphere::VoronoiSphere, ::Val{:vector_curl}, F, mgr) =
+    allocate_fields((:vector, :dual), sphere, F, mgr)
+
+function hyperdiff!(f::HyperDiffusion{:vector_curl}, sphere::VoronoiSphere, (ducov, zv), mgr, ucov, dt)
+    (; niter, nu), F = f, eltype(ucov)
+    voronoi_curl_2D!(mgr, zv, ucov, sphere.Av, sphere.dual_edge, sphere.dual_ne)
+    for _ in 1:niter-1
+        voronoi_gradv_2D!(mgr, nothing, ducov, zv, sphere.edge_down_up, sphere.le_de)
+        voronoi_curl_2D!(mgr, zv, ducov, sphere.Av, sphere.dual_edge, sphere.dual_ne)
+    end
+    voronoi_gradv_2D!(mgr, F(nu*dt), ucov, zv, sphere.edge_down_up, sphere.le_de)
+end
+
+@loops function voronoi_curl_2D!(_, zv, ucov, areas, edges, signs)
+    let ijrange = axes(zv,1)
+        F = eltype(zv)
+        @unroll for ij in ijrange
+            aa = inv(areas[ij])
+            ee = ( edges[e,ij] for e=1:3 ) # 3 edge indices
+            ss = ( F(signs[e,ij]) for e=1:3 ) # 3 signs
+            zv[ij] = aa*sum(ucov[ee[edge]]*ss[edge] for edge=1:3 )
+        end
+    end
+end
+
+@loops function voronoi_gradv_2D!(_, K, grad, zv, down_up, le_de)
+    let ijrange = axes(grad,1) # velocity points
+        for ij in ijrange
+            ij_down, ij_up = down_up[1,ij], down_up[2,ij]
+            de_le = inv(le_de[ij]) # covariant => contravariant
+            if isnothing(K)
+                grad[ij] = de_le*(zv[ij_up]-zv[ij_down])
+            else
+                grad[ij] -= K*de_le*(zv[ij_up]-zv[ij_down])
+            end
+        end
+    end
+end
