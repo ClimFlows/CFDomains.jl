@@ -48,13 +48,6 @@ are `:scalar`, `:vector_curl`, `:vector_div`.
 HyperDiffusion(domain::D, niter, nu::F, fieldtype) where {D, F} =
     HyperDiffusion{fieldtype, D, F}(domain, niter, nu)
 
-function filter(f::HyperDiffusion, mgr, field, dt)
-    field, scratch = copy(field), allocate_scratch(f, mgr)
-    hyperdiff!(f, f.domain, scratch, mgr, field, dt)
-    return field
-end
+scratch_space(f::HD{fieldtype}, field) where fieldtype = scratch_hyperdiff(f.domain, Val(fieldtype), field)
 
-scratch_space(f::HD{fieldtype}, field) where fieldtype = scratch_hyperdiff(f.domain, Val(ft), field)
-
-filter!(f::HyperDiffusion, mgr, field, dt, scratch=allocate_scratch(f, mgr)) =
-    hyperdiff!(f, f.domain, scratch, mgr, field, dt)
+filter!(out, field, f::HyperDiffusion, dt, scratch, mgr=nothing) = hyperdiff!(out, field, f, f.domain, dt, scratch, mgr)
