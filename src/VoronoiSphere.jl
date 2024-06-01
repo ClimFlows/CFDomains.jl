@@ -49,7 +49,6 @@ end
 @inline Base.eltype(dom::VSph) = eltype(dom.Ai)
 
 @inline primal(dom::VSph) = SubMesh{:scalar, typeof(dom)}(dom)
-@inline interior(::Val{:scalar}, dom::VSph) = eachindex(dom.Ai)
 
 function crop((primal_num, dual_num, edge_num), data, name::Symbol)
     if name in (:primal_deg, :primal_edge, :primal_vertex, :primal_ne,

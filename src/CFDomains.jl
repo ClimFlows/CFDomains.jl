@@ -2,6 +2,11 @@ module CFDomains
 using MutatingOrNot: void, Void
 using ManagedLoops: @loops, @unroll
 
+macro fast(code)
+    debug = haskey(ENV, "GF_DEBUG") && (ENV["GF_DEBUG"]!="")
+    return debug ? esc(code) : esc(quote @inbounds $code end)
+end
+
 #====================  Domain types ====================#
 
 """
@@ -18,17 +23,46 @@ abstract type SpectralDomain <: AbstractDomain end
 """
 abstract type FDDomain <: AbstractDomain end
 
-@inline interior(x::AbstractDomain) = interior(typeof(x))
-@inline interior(domain::Type) = domain
+# Numerical filters
+
+include("filters.jl")
 
 #=============== All domains ================#
 
-# For initialization and plotting purposes, [c]vectorfield[!] converts between vector and cvector
+"""
+    field = allocate_field(kind::Symbol, domain::AbstractDomain, precision::Type)
 
-export grid
-export dotprod_cvector, allocate_field, allocate_fields # allocate_cvector, allocate_scalar
-export sample_scalar, sample_scalar!, sample_cvector, sample_cvector!
-export vectorfield, vectorfield!, cvectorfield, cvectorfield!
+Allocate a field of the given `kind` and `precision` over the given domain.
+Typical values for `precision` are `Float32`, `Float64` or `ForwardDiff.Dual`.
+Depending on the domain, valid values for `kind` may include `:scalar`, `:vector`,
+`:scalar_spec`, `scalar_spat` (spectral/spatial representation of a scalar field),
+`:vector_spec`, `vector_spat` (spectral/spatial representation of a vector field).
+
+Internally, `allocate_field(kind::Symbol, domain, F)` returns
+`allocate_field(Val(kind), domain, F)`. To specialize `allocate_field`
+for `MyDomain <: AbstractDomain`, one must provide methods for:
+
+    allocate_field(::Val{kind}, domain::MyDomain, F)
+
+where symbol `kind::Symbol` is one of the valid field kinds for that domain.
+"""
+function allocate_field end
+
+"""
+    fields = allocate_fields(kinds::Tuple, domain::AbstractDomain, F::Type)
+    fields = allocate_fields(kinds::NamedTuple, domain::AbstractDomain, F::Type)
+
+Allocate a (named) tuple of fields according to the provided `kinds`. For instance:
+
+    fields = allocate_fields((:vector, :scalar), domain, F)
+    fields = allocate_fields((a=:vector, b=:scalar), domain, F)
+
+are equivalent to, respectively:
+
+    fields = (allocate_field(:vector, domain, F), allocate_field(:scalar, domain, F))
+    fields = (a=allocate_field(:vector, domain, F), b=allocate_field(:scalar, domain, F))
+"""
+function allocate_fields end
 
 @inline allocate_fields(syms::NamedTuple, domain::AbstractDomain, F::Type) = map(sym->allocate_field(Val(sym), domain, F), syms)
 @inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type) = Tuple( allocate_field(Val(sym), domain, F) for sym in syms )
@@ -38,12 +72,81 @@ export vectorfield, vectorfield!, cvectorfield, cvectorfield!
 @inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), domain, F, mgr)
 @inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), nq, domain, F, mgr)
 
-# @inline allocate_field(::Val{:scalar},  args...) = allocate_scalar(args...)
-# @inline allocate_field(::Val{:cvector}, args...) = allocate_cvector(args...)
-# @inline allocate_field(::Val{:vector},  args...) = allocate_vector(args...)
+# belongs to ManagedLoops
+# array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
+# array(T, mgr::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), mgr)
+# array(T, mgr::Loops.WrapperBackend, size...) = array(T, mgr.mgr, size...)
 
-# dot product between vectors represented as complex numbers
-dotprod_cvector(a,b) = real(conj(a)*b)
+#===================== Shell (multi-layer domain)=====================#
+
+"""
+Singleton type describing a multi-layer data layout where horizontal layers are contiguous in memory.
+"""
+struct HVLayout end
+
+"""
+Singleton type describing a multi-layer data layout where vertical columnsare contiguous.
+"""
+struct VHLayout end
+
+"""
+    multi_layer_domain = Shell(nz::Int, layer::AbstractDomain, layout)
+
+Return a multi-layer domain made of `nz` layers with data layout specified by `layout`.
+Unless you know what you are doing, it is recommended to use rather:
+
+    multi_layer_domain = shell(nz::Int, layer::AbstractDomain)
+
+which gets the data layout from `data_layout(layer)`. Otherwise, `multi_layer_domain` may be non-optimal or non-usable.
+"""
+struct Shell{nz, Domain, Layout}
+    layer::Domain
+    layout::Layout
+    Shell(nz::Int, layer::D, layout::L) where {L,D} = new{nz, D, L}(layer, layout)
+end
+"""
+    multi_layer_domain = shell(nz::Int, layer::AbstractDomain)
+
+Return a multi-layer domain made of `nz` layers with data layout specified by `data_layout(layer)`.
+"""
+shell(nz, layer) = Shell(nz, layer, data_layout(layer))
+
+"""
+    layout = data_layout(shell::Shell)
+
+Return `layout` describing the data layout of multi-layer domain `shell`.
+
+    layout = data_layout(domain::Domain)
+
+Return `layout` describing the preferred data layout for a shell made of layers
+of type `Domain`.
+
+Typical values for `layout` are the singletons `HVLayout()` (layers are contiguous in memory)
+and `VHLayout` (columns are contiguous in memory).
+"""
+data_layout(shell::Shell) = shell.layout
+
+# shell(nz, layer::SHTnsSphere) = Shell(nz, layer, HVLayout())
+
+@inline nlayer(::Shell{nz}) where nz = nz
+@inline layers(shell::Shell) = shell
+@inline interfaces(shell::Shell{nz,M}) where {nz,M} = Shell(nz, shell.layer, shell.layout)
+
+allocate_field(val::Val, shell::Shell{nz}, F) where nz = allocate_shell(val, shell.layer, shell.layout, nz, F)
+allocate_field(val::Val, nq::Int, shell::Shell{nz}, F) where nz = allocate_shell(val, shell.layer, nz, nq, F)
+allocate_field(val::Val, shell::Shell{nz}, F, mgr) where nz = allocate_shell(val, shell.layer, nz, F, mgr)
+allocate_field(val::Val, nq::Int, shell::Shell{nz}, F, mgr) where nz = allocate_shell(val, shell.layer, nz, nq, F, mgr)
+
+# Dubious functions
+# @inline Base.eltype(shell::Shell) = eltype(shell.layer)
+# @inline interior(data, domain::Shell) = data
+# @inline ijk( ::Type{Shell{nz, M}}, ij, k) where {nz, M} = (ij-1)*nz + k
+# @inline kplus( ::Type{Shell{nz, M}})      where {nz, M} = 1
+# @inline primal(domain::Shell{nz}) where nz = Shell(primal(domain.layer), nz)
+# @inline interior(x::AbstractDomain) = interior(typeof(x))
+# @inline interior(domain::Type) = domain
+
+#======================== Box ========================#
 
 meshgrid(ai, bj) = [a for a in ai, b in bj], [b for a in ai, b in bj]
 
@@ -62,45 +165,6 @@ function periodize_tuple!(datas::Tuple, box, args...)
     return datas
 end
 
-macro fast(code)
-    debug = haskey(ENV, "GF_DEBUG") && (ENV["GF_DEBUG"]!="")
-    return debug ? esc(code) : esc(quote @inbounds $code end)
-end
-
-#===================== Shell =====================#
-
-struct Shell{nz, Layer<:AbstractDomain} <: AbstractDomain
-    layer::Layer
-end
-Shell(sphere::M, nz) where M = Shell{nz,M}(sphere)
-
-@inline Base.eltype(shell::Shell) = eltype(shell.layer)
-
-@inline Layer(domain::Shell) = domain.layer
-@inline layers(domain::Shell) = domain
-@inline nlayer(domain::Shell{nz}) where nz = nz
-@inline interfaces(domain::Shell{nz,M}) where {nz,M} = Shell{nz+1,M}(domain.layer)
-@inline interior(data, domain::Shell) = data
-
-allocate_field(val::Val, domain::Shell{nz}, F) where nz = allocate_shell(val, domain.layer, nz, F)
-allocate_field(val::Val, nq::Int, domain::Shell{nz}, F) where nz = allocate_shell(val, domain.layer, nz, nq, F)
-allocate_field(val::Val, domain::Shell{nz}, F, mgr) where nz = allocate_shell(val, domain.layer, nz, F, mgr)
-allocate_field(val::Val, nq::Int, domain::Shell{nz}, F, mgr) where nz = allocate_shell(val, domain.layer, nz, nq, F, mgr)
-
-# belongs to ManagedLoops
-# array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
-# array(T, mgr::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), mgr)
-# array(T, mgr::Loops.WrapperBackend, size...) = array(T, mgr.mgr, size...)
-
-@inline ijk( ::Type{Shell{nz, M}}, ij, k) where {nz, M} = (ij-1)*nz + k
-@inline kplus( ::Type{Shell{nz, M}})      where {nz, M} = 1
-
-@inline primal(domain::Shell{nz}) where nz = Shell(primal(domain.layer), nz)
-
-#================ Numerical filters =================#
-
-include("filters.jl")
-
 #============= Spherical harmonics on the unit sphere ==========#
 
 "Parent type for spherical domains using spherical harmonics."
@@ -110,14 +174,13 @@ abstract type SpectralSphere <: SpectralDomain end
 
 abstract type UnstructuredDomain <: AbstractDomain end
 
-
 struct SubMesh{sym, Dom<:UnstructuredDomain} <: UnstructuredDomain
     domain::Dom
 end
 @inline SubMesh(sym::Symbol, dom::D) where D = SubMesh{sym,D}(dom)
 
-@inline interior(submesh::SubMesh{sym}) where sym = interior(Val(sym), submesh.domain)
-
 include("VoronoiSphere.jl")
+
+shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
 
 end # module
