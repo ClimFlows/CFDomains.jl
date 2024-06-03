@@ -80,14 +80,23 @@ function allocate_fields end
 #===================== Shell (multi-layer domain)=====================#
 
 """
-Singleton type describing a multi-layer data layout where horizontal layers are contiguous in memory.
+    struct HVLayout{rank} end
+    layout = HVLayout(rank)
+Singleton type describing a multi-layer data layout where horizontal layers are contiguous in memory. `rank`
+is the number of horizontal indices (1 or 2).
 """
-struct HVLayout end
+struct HVLayout{rank} end
+HVLayout(rank=1) = HVLayout{rank}()
 
 """
-Singleton type describing a multi-layer data layout where vertical columnsare contiguous.
+    struct VHLayout{rank} end
+    layout = VHLayout(rank)
+
+Singleton type describing a multi-layer data layout where vertical columnsare contiguous. `rank`
+is the number of horizontal indices (1 or 2).
 """
-struct VHLayout end
+struct VHLayout{rank} end
+VHLayout(rank=1) = VHLayout{rank}()
 
 """
     multi_layer_domain = Shell(nz::Int, layer::AbstractDomain, layout)
@@ -182,5 +191,9 @@ end
 include("VoronoiSphere.jl")
 
 shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
+
+#=================== Vertical coordinates ====================#
+
+include("vertical_coordinate.jl")
 
 end # module
