@@ -196,4 +196,9 @@ shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
 
 include("vertical_coordinate.jl")
 
+using PackageExtensionCompat
+function __init__()
+    @require_extensions
+end
+
 end # module
