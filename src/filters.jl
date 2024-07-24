@@ -1,43 +1,11 @@
 abstract type AbstractFilter ; end
 
-"""
-    # generic
-    filtered = filter!(space, scratch, field, filter::AbstractFilter, dt, mgr::LoopManager)
-
-    # out-of-place, allocates `scratch`, allocates and returns `space`
-    filtered = filter!(void, void, field, filter, dt, mgr)
-
-    # mutating, non-allocating
-    filter!(filtered, scratch, field, filter, dt, mgr)
-
-    # in-place, non-allocating
-    filter!(field, scratch, field, filter, dt, mgr)
-
-Apply `filter` to `field` during time `dt` with loop manager `mgr`. `mgr` can be `nothing`.
-`space` is the output field, or `void`. In the latter case, `space` is allocated as `similar(field)` or equivalent.
-`scratch` is scratch space allocated with [`scratch_space`](@ref), or `void`. In the latter case, `scratch` is implicitly allocated.
-"""
-function filter! end
-
-"""
-    scratch = scratch_space(filter::AbstractFilter, field, [scratch])
-
-If `scratch` is omitted or `::Void`, allocate and return scratch space for applying `filter` to `field`.
-Otherwise just return `scratch`. See also [`filter!`](@ref).
-"""
-function scratch_space end
-
-# generic fallbacks
-scratch_space(filter, field, ::Void) = scratch_space(filter, field)
-scratch_space(filter, field, scratch) = scratch
-
 struct HyperDiffusion{fieldtype, D, F, X} <: AbstractFilter
     domain :: D
     niter :: Int
     nu :: F
     extra::X # pre-computed stuff, if any
 end
-const HD=HyperDiffusion
 
 """
     filter = HyperDiffusion(fieldtype::Symbol, domain, niter::Int, nu)                  # user-friendly
@@ -49,9 +17,16 @@ are `:scalar`, `:vector`, `:vector_curl`, `:vector_div`.
 
 The filter is to be used as:
 
-    new_data = filter(out_data, in_data, scratch=void)
+    # out-of-place, allocates `scratch`, allocates and returns `filtered_data`
+    filtered_data = filter(void, in_data, void)
 
-The above syntax returns `hyperdiffusion!(filter.domain, filter, out_data, in_data, scratch)`. If `scratch::Void`, then
+    # mutating, non-allocating
+    out_data = filter(out_data, in_data, scratch)
+
+    # in-place, non-allocating
+    inout_data = filter(inout_data, inout_data, scratch)
+
+`filter(out_data, in_data, scratch)` returns `hyperdiffusion!(filter.domain, filter, out_data, in_data, scratch)`. If `scratch::Void`, then
 
     scratch = scratch_space(filter, in_data)
 
@@ -76,7 +51,15 @@ See `[`HyperDiffusion`](@ref).
 """
 function hyperdiffusion! end
 
-scratch_space(f::HD{fieldtype}, field) where fieldtype = scratch_hyperdiff(f.domain, Val(fieldtype), field)
+"""
+    scratch = scratch_space(filter::AbstractFilter, field, [scratch])
+
+If `scratch` is omitted or `::Void`, return scratch space for applying `filter` to `field`,
+allocated by [`scratch_hyperdiff`](@ref). Otherwise just return `scratch`. See also [`HyperDiffusion`](@ref).
+"""
+scratch_space(_, _, scratch) = scratch
+scratch_space(filter, field, ::Void) = scratch_space(filter, field)
+scratch_space(f::HyperDiffusion{fieldtype}, field) where fieldtype = scratch_hyperdiff(f.domain, Val(fieldtype), field)
 
 """
     scratch = scratch_hyperdiff!(domain, Val(fieldtype), field)
@@ -85,5 +68,3 @@ Return scratch space used to apply hyperdiffusion on `domain` for a `field` of a
 See [`HyperDiffusion`](@ref) and [`hyperdiffusion!`](@ref).
 """
 scratch_hyperdiff!(domain, ::Val, field) = nothing
-
-filter!(out, field, f::HyperDiffusion, dt, scratch, mgr=nothing) = hyperdiff!(out, field, f, f.domain, dt, scratch, mgr)
