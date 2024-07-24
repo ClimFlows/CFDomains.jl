@@ -31,23 +31,59 @@ function scratch_space end
 scratch_space(filter, field, ::Void) = scratch_space(filter, field)
 scratch_space(filter, field, scratch) = scratch
 
-struct HyperDiffusion{fieldtype, D, F} <: AbstractFilter
+struct HyperDiffusion{fieldtype, D, F, X} <: AbstractFilter
     domain :: D
     niter :: Int
     nu :: F
+    extra::X # pre-computed stuff, if any
 end
 const HD=HyperDiffusion
 
 """
-    filter = Hyperdiffusion(domain, niter, nu, fieldtype::Symbol)
+    filter = HyperDiffusion(fieldtype::Symbol, domain, niter::Int, nu)                  # user-friendly
+    filter = HyperDiffusion{fieldtype, D, F, X}(domain::D, niter::Int, nu::F, extra::X) # internal
 
 Return a `filter` that applies Laplacian diffusion iterated `niter` times with hyperdiffusive
-coefficient `nu ≥ 0` on fields of type `fieldtype`. Supported field types for `domain::VoronoiSphere`
-are `:scalar`, `:vector_curl`, `:vector_div`.
+coefficient `nu ≥ 0` on fields of type `fieldtype`. Supported field types
+are `:scalar`, `:vector`, `:vector_curl`, `:vector_div`.
+
+The filter is to be used as:
+
+    new_data = filter(out_data, in_data, scratch=void)
+
+The above syntax returns `hyperdiffusion!(filter.domain, filter, out_data, in_data, scratch)`. If `scratch::Void`, then
+
+    scratch = scratch_space(filter, in_data)
+
+The user-friendly `HyperDiffusion` may be specialized for specific types of `domain`. The specialized method should call
+the internal constructor which takes an extra argument `extra`, stored as `filter.extra` for later use
+by [`hyperdiffusion!`](@ref). The default user-friendly constructor sets `extra=nothing`.
+
+Similarly, `scratch_space(filter, in_data)` calls `scratch_hyperdiff(f.domain, Val(fieldtype), in_data)` which by default returns `nothing`.
+[`scratch_hyperdiff`](@ref) may be specialized for specific domain types and `fieldtype`.
 """
 HyperDiffusion(domain::D, niter, nu::F, fieldtype) where {D, F} =
-    HyperDiffusion{fieldtype, D, F}(domain, niter, nu)
+    HyperDiffusion{fieldtype, D, F}(domain, niter, nu, nothing)
+
+(hd::HyperDiffusion)(out_data, in_data) = hyperdiffusion!(hd.domain, hd, storage, coefs)
+
+"""
+    new_data = hyperdiffusion!(filter.domain, filter, out_data, in_data, scratch)
+
+Apply hyperdiffusive `filter`` to `in_data`. The result is written into `out_data` and returned.
+If `domain::SpectralDomain`, the filter applies to spectral coefficients. If `out_data::Void`, it is adequately allocated.
+See `[`HyperDiffusion`](@ref).
+"""
+function hyperdiffusion! end
 
 scratch_space(f::HD{fieldtype}, field) where fieldtype = scratch_hyperdiff(f.domain, Val(fieldtype), field)
+
+"""
+    scratch = scratch_hyperdiff!(domain, Val(fieldtype), field)
+
+Return scratch space used to apply hyperdiffusion on `domain` for a `field` of a certain `fieldtype`.
+See [`HyperDiffusion`](@ref) and [`hyperdiffusion!`](@ref).
+"""
+scratch_hyperdiff!(domain, ::Val, field) = nothing
 
 filter!(out, field, f::HyperDiffusion, dt, scratch, mgr=nothing) = hyperdiff!(out, field, f, f.domain, dt, scratch, mgr)
