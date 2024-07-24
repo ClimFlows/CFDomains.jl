@@ -3,11 +3,13 @@ using MutatingOrNot: void, Void
 using ManagedLoops: @loops, @unroll
 
 macro fast(code)
-    debug = haskey(ENV, "GF_DEBUG") && (ENV["GF_DEBUG"]!="")
-    return debug ? esc(code) : esc(quote @inbounds $code end)
+    debug = haskey(ENV, "GF_DEBUG") && (ENV["GF_DEBUG"] != "")
+    return debug ? esc(code) : esc(quote
+        @inbounds $code
+    end)
 end
 
-#====================  Domain types ====================#
+#====================  Abstract Domain types ====================#
 
 """
 Parent type of [`SpectralDomain`](@ref) and [`FDDomain`](@ref)
@@ -23,11 +25,19 @@ abstract type SpectralDomain <: AbstractDomain end
 """
 abstract type FDDomain <: AbstractDomain end
 
-# Numerical filters
+#=============== Types for filters ================#
 
-include("filters.jl")
+abstract type AbstractFilter end
 
-#=============== All domains ================#
+struct HyperDiffusion{fieldtype,D,F,X} <: AbstractFilter
+    domain::D
+    niter::Int
+    nu::F
+    extra::X # pre-computed stuff, if any
+end
+
+
+#=============== Allocations ================#
 
 """
     field = allocate_field(kind::Symbol, domain::AbstractDomain, precision::Type)
@@ -64,13 +74,20 @@ are equivalent to, respectively:
 """
 function allocate_fields end
 
-@inline allocate_fields(syms::NamedTuple, domain::AbstractDomain, F::Type) = map(sym->allocate_field(Val(sym), domain, F), syms)
-@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type) = Tuple( allocate_field(Val(sym), domain, F) for sym in syms )
-@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type, mgr) = Tuple( allocate_field(Val(sym), domain, F, mgr) for sym in syms )
-@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type) = allocate_field(Val(sym), domain, F)
-@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type) = allocate_field(Val(sym), nq, domain, F)
-@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), domain, F, mgr)
-@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, mgr) = allocate_field(Val(sym), nq, domain, F, mgr)
+@inline allocate_fields(syms::NamedTuple, domain::AbstractDomain, F::Type) =
+    map(sym -> allocate_field(Val(sym), domain, F), syms)
+@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type) =
+    Tuple(allocate_field(Val(sym), domain, F) for sym in syms)
+@inline allocate_fields(syms::Tuple, domain::AbstractDomain, F::Type, mgr) =
+    Tuple(allocate_field(Val(sym), domain, F, mgr) for sym in syms)
+@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type) =
+    allocate_field(Val(sym), domain, F)
+@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type) =
+    allocate_field(Val(sym), nq, domain, F)
+@inline allocate_field(sym::Symbol, domain::AbstractDomain, F::Type, mgr) =
+    allocate_field(Val(sym), domain, F, mgr)
+@inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, mgr) =
+    allocate_field(Val(sym), nq, domain, F, mgr)
 
 # belongs to ManagedLoops
 # array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
@@ -86,7 +103,7 @@ Singleton type describing a multi-layer data layout where horizontal layers are 
 is the number of horizontal indices (1 or 2).
 """
 struct HVLayout{rank} end
-HVLayout(rank=1) = HVLayout{rank}()
+HVLayout(rank = 1) = HVLayout{rank}()
 
 """
     struct VHLayout{rank} end
@@ -96,7 +113,7 @@ Singleton type describing a multi-layer data layout where vertical columnsare co
 is the number of horizontal indices (1 or 2).
 """
 struct VHLayout{rank} end
-VHLayout(rank=1) = VHLayout{rank}()
+VHLayout(rank = 1) = VHLayout{rank}()
 
 """
     multi_layer_domain = Shell(nz::Int, layer::AbstractDomain, layout)
@@ -108,10 +125,10 @@ Unless you know what you are doing, it is recommended to use rather:
 
 which gets the data layout from `data_layout(layer)`. Otherwise, `multi_layer_domain` may be non-optimal or non-usable.
 """
-struct Shell{nz, Domain, Layout}
+struct Shell{nz,Domain,Layout}
     layer::Domain
     layout::Layout
-    Shell(nz::Int, layer::D, layout::L) where {L,D} = new{nz, D, L}(layer, layout)
+    Shell(nz::Int, layer::D, layout::L) where {L,D} = new{nz,D,L}(layer, layout)
 end
 """
     multi_layer_domain = shell(nz::Int, layer::AbstractDomain)
@@ -137,14 +154,18 @@ data_layout(shell::Shell) = shell.layout
 
 # shell(nz, layer::SHTnsSphere) = Shell(nz, layer, HVLayout())
 
-@inline nlayer(::Shell{nz}) where nz = nz
+@inline nlayer(::Shell{nz}) where {nz} = nz
 @inline layers(shell::Shell) = shell
 @inline interfaces(shell::Shell{nz,M}) where {nz,M} = Shell(nz, shell.layer, shell.layout)
 
-allocate_field(val::Val, shell::Shell{nz}, F) where nz = allocate_shell(val, shell.layer, shell.layout, nz, F)
-allocate_field(val::Val, nq::Int, shell::Shell{nz}, F) where nz = allocate_shell(val, shell.layer, nz, nq, F)
-allocate_field(val::Val, shell::Shell{nz}, F, mgr) where nz = allocate_shell(val, shell.layer, nz, F, mgr)
-allocate_field(val::Val, nq::Int, shell::Shell{nz}, F, mgr) where nz = allocate_shell(val, shell.layer, nz, nq, F, mgr)
+allocate_field(val::Val, shell::Shell{nz}, F) where {nz} =
+    allocate_shell(val, shell.layer, shell.layout, nz, F)
+allocate_field(val::Val, nq::Int, shell::Shell{nz}, F) where {nz} =
+    allocate_shell(val, shell.layer, nz, nq, F)
+allocate_field(val::Val, shell::Shell{nz}, F, mgr) where {nz} =
+    allocate_shell(val, shell.layer, nz, F, mgr)
+allocate_field(val::Val, nq::Int, shell::Shell{nz}, F, mgr) where {nz} =
+    allocate_shell(val, shell.layer, nz, nq, F, mgr)
 
 # Dubious functions
 # @inline Base.eltype(shell::Shell) = eltype(shell.layer)
@@ -166,7 +187,8 @@ grid point values in `box`. `data` may also be a collection, in which case
 `periodize!` is applied to each element of the collection. Call `periodize!`
 on data obtained by computations involving horizontal averaging/differencing.
 """
-@inline periodize!(datas::Tuple, box::AbstractDomain, args...) = periodize_tuple!(datas, box, args...)
+@inline periodize!(datas::Tuple, box::AbstractDomain, args...) =
+    periodize_tuple!(datas, box, args...)
 function periodize_tuple!(datas::Tuple, box, args...)
     for data in datas
         periodize!(data, box, args...)
@@ -183,18 +205,22 @@ abstract type SpectralSphere <: SpectralDomain end
 
 abstract type UnstructuredDomain <: AbstractDomain end
 
-struct SubMesh{sym, Dom<:UnstructuredDomain} <: UnstructuredDomain
+struct SubMesh{sym,Dom<:UnstructuredDomain} <: UnstructuredDomain
     domain::Dom
 end
-@inline SubMesh(sym::Symbol, dom::D) where D = SubMesh{sym,D}(dom)
+@inline SubMesh(sym::Symbol, dom::D) where {D} = SubMesh{sym,D}(dom)
 
-include("VoronoiSphere.jl")
+include("julia/VoronoiSphere.jl")
 
 shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
 
 #=================== Vertical coordinates ====================#
 
-include("vertical_coordinate.jl")
+include("julia/vertical_coordinate.jl")
+
+#=================== Numerical filters ========================#
+
+include("julia/filters.jl")
 
 using PackageExtensionCompat
 function __init__()
