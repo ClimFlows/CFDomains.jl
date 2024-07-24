@@ -12,4 +12,9 @@ module SHTnsSpheres_Ext
         return storage
     end
 
+    function hyperdiff_shell!(sph::SHTnsSphere, ::HVLayout{2}, hd::HyperDiffusion{:scalar}, storage, coefs, ::Nothing)
+        (; niter, nu), (; laplace, lmax) = hd, sph
+        return @. storage = (1-nu*(-laplace/(lmax*(lmax+1)))^niter)*coefs
+    end
+
 end # module
