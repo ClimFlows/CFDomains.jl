@@ -96,6 +96,19 @@ function allocate_fields end
 
 #===================== Shell (multi-layer domain)=====================#
 
+#=
+struct DimX end # first horizontal dimension
+struct DimY end # second horizontal dimension
+struct DimXY end # unique dimension indexing horizontal points
+abstract type DimZ end # vertical dimension
+struct BottomUp <: DimZ end # vertical dimension, model levels increase from bottom to top
+struct TopDown <: DimZ end # vertical dimension, model levels increase from top to bottom
+
+struct Layout{Dims<:Tuple}
+    dims::Dims
+end
+=#
+
 """
     struct HVLayout{rank} end
     layout = HVLayout(rank)
@@ -109,7 +122,7 @@ HVLayout(rank = 1) = HVLayout{rank}()
     struct VHLayout{rank} end
     layout = VHLayout(rank)
 
-Singleton type describing a multi-layer data layout where vertical columnsare contiguous. `rank`
+Singleton type describing a multi-layer data layout where vertical columns are contiguous. `rank`
 is the number of horizontal indices (1 or 2).
 """
 struct VHLayout{rank} end
@@ -217,6 +230,10 @@ shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
 #=================== Vertical coordinates ====================#
 
 include("julia/vertical_coordinate.jl")
+
+#================= Vertical interpolation ====================#
+
+include("julia/vertical_interpolation.jl")
 
 #=================== Numerical filters ========================#
 
