@@ -10,5 +10,5 @@ Documentation for [CFDomains](https://github.com/ClimFlows/CFDomains.jl).
 ```
 
 ```@autodocs
-Modules = [CFDomains, CFDomains.VerticalInterpolation]
+Modules = [CFDomains, CFDomains.VerticalInterpolation, CFDomains.Stencils]
 ```
