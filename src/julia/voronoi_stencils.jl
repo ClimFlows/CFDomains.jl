@@ -140,8 +140,8 @@ end
 
 """
     cflux = centered_flux(vsphere, ij::Int)
-    flux[ij] = flux(mass, ucov)         # single-layer
-    flux[k, ij] = flux(mass, ucov, k)   # multi-layer
+    flux[ij] = cflux(mass, ucov)         # single-layer
+    flux[k, ij] = cflux(mass, ucov, k)   # multi-layer
 
 Two-step computation of centered flux at edge `ij` of `vsphere`.
 """
@@ -163,30 +163,56 @@ end
 
 #=========================== TRiSK ======================#
 
-# one-layer
+"""
+Two-step computation of TRiSK operator U⟂ or q×U at edge `ij` of `vsphere`.
+
+    trisk = TRiSK(vsphere, ij, Val(deg)) # deg = vsphere.trisk_deg[ij]
+    U_perp[ij] = trisk(U)              # linear, single-layer
+    U_perp[k, ij] = trisk(U, k::Int)   # linear, multi-layer
+    qU[ij] = trisk(U, q)               # nonlinear, single-layer
+    qU[k, ij] = trisk(U, q, k)         # nonlinear, multi-layer
+
+    qU[:, ij] = 0
+    for edge in 1:trisk_deg[ij]
+        trisk = TRiSK(vsphere, ij, edge) # edge ∈ 1:trisk_deg[ij]
+        for k in axes(qU,1)
+            qU[k, ij] = trisk(qU, U, q, k)  # nonlinear, multi-layer
+        end
+    end
+"""
+
 @gen TRiSK(vsphere, ij::Int, v::Val{N}) where N = quote
     trisk = @unroll (vsphere.trisk[edge, ij] for edge=1:$N)
     wee = @unroll (vsphere.wee[edge, ij] for edge=1:$N)
     Fix(get_TRiSK1, (ij, v, trisk, wee))
 end
 
+# single-layer, linear
 @gen get_TRiSK1(ij, ::Val{N}, edge, weight, U) where N = quote
     @unroll sum((weight[e] * U[edge[e]]) for e in 1:$N)
 end
 
+# multi-layer, linear
 @gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k::Int) where N = quote
     @unroll sum((weight[e] * U[k, edge[e]]) for e in 1:$N)
 end
 
+# single-layer, non-linear
 @gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe) where N = quote
     @unroll sum((weight[e] * U[edge[e]])*(qe[ij] + qe[edge[e]]) for e in 1:$N)/2
 end
 
 # multi-layer, non-linear
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe, k) where N = quote
+    @unroll sum((weight[e] * U[k, edge[e]])*(qe[k, ij] + qe[k, edge[e]]) for e in 1:$N)/2
+end
+
+# this implementation is less efficient but kept for benchmarking
 # weight includes the factor 1/2 of the centered average of qe
 @inl TRiSK(vsphere, ij::Int, edge::Int) =
     Fix(get_TRiSK2, (ij, vsphere.trisk[edge, ij], vsphere.wee[edge, ij] / 2))
 
+# multi-layer, nonlinear
 @inl get_TRiSK2(ij, edge, weight, du, U, qe, k) =
     muladd(weight * U[k, edge], qe[k, ij] + qe[k, edge], du[k, ij])
 
