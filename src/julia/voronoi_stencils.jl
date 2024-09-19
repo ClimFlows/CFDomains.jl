@@ -37,14 +37,63 @@ end
     weights = @unroll (vsphere.Riv2[e, ij] for e = 1:3)
     return Fix(get_average_iv, (cells, weights))
 end
+
+@inl get_average_iv(cells, weights, mass) =
+    @unroll sum(weights[e] * mass[cells[e]] for e = 1:3)
+
 @inl get_average_iv(cells, weights, mass, k) =
     @unroll sum(weights[e] * mass[k, cells[e]] for e = 1:3)
 
 # vertex -> edge
 @inl average_ve(vsphere, ij::Int) =
-    Fix(get_average_ve, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2]))
+    Fix(get_average_ve, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
+
+@inl get_average_ve(up, down, qv) = (qv[down] + qv[up]) / 2
 
 @inl get_average_ve(up, down, qv, k) = (qv[k, down] + qv[k, up]) / 2
+
+#========================= divergence =======================#
+
+# flux must be a contravariant vector density = 2-form in 3D space
+# in X/s for the flux of X
+
+# signs include the inv_area factor
+@gen divergence(vsphere, ij::Int, v::Val{N}) where {N} = quote
+    inv_area = inv(vsphere.Ai[ij])
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    signs = @unroll (inv_area * vsphere.primal_ne[e, ij] for e = 1:$N)
+    return Fix(get_divergence, (v, edges, signs))
+end
+
+@gen get_divergence(::Val{N}, edges, signs, flux) where {N} = quote
+    @unroll sum(flux[edges[e]] * signs[e] for e = 1:$N)
+end
+
+@gen get_divergence(::Val{N}, edges, signs, flux, k) where {N} = quote
+    @unroll sum(flux[k, edges[e]] * signs[e] for e = 1:$N)
+end
+
+#========================= curl =====================#
+
+@inl function curl(vsphere, ij::Int)
+    F = eltype(vsphere.Riv2)
+    edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
+    signs = @unroll (F(vsphere.dual_ne[e, ij]) for e = 1:3)
+    return Fix(get_curl, (edges, signs))
+end
+
+@inl get_curl(edges, signs, ucov) = @unroll sum(ucov[edges[e]] * signs[e] for e = 1:3)
+
+@inl get_curl(edges, signs, ucov, k) = @unroll sum(ucov[k, edges[e]] * signs[e] for e = 1:3)
+
+#========================= gradient =====================#
+
+@inl gradient(vsphere, ij::Int) =
+    Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
+
+@inl get_gradient(left, right, q) = q[right] - q[left]
+
+@inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
 
 
 #======================= dot product ======================#
@@ -79,6 +128,10 @@ represent covariant vector fields (1-forms).
     return Fix(get_dot_product, (v, edges, hodges))
 end
 
+@gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov) where {N} = quote
+    @unroll sum(hodges[e] * (ucov[edges[e]] * vcov[edges[e]]) for e = 1:$N)
+end
+
 @gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
     @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
 end
@@ -108,48 +161,33 @@ end
 @inl get_centered_flux(ij, left, right, le_de, mass, ucov) =
     le_de * ucov[ij] * (mass[left] + mass[right])
 
-#========================= divergence =======================#
-
-# flux must be a contravariant vector density = 2-form in 3D space
-# in X/s for the flux of X
-
-# signs include the inv_area factor
-@gen divergence(vsphere, ij::Int, v::Val{N}) where {N} = quote
-    inv_area = inv(vsphere.Ai[ij])
-    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
-    signs = @unroll (inv_area * vsphere.primal_ne[e, ij] for e = 1:$N)
-    return Fix(get_divergence, (v, edges, signs))
-end
-
-@gen get_divergence(::Val{N}, edges, signs, flux, k) where {N} = quote
-    @unroll sum(flux[k, edges[e]] * signs[e] for e = 1:$N)
-end
-
-#========================= curl =====================#
-
-@inl function curl(vsphere, ij::Int)
-    F = eltype(vsphere.Riv2)
-    edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
-    signs = @unroll (F(vsphere.dual_ne[e, ij]) for e = 1:3)
-    return Fix(get_curl, (edges, signs))
-end
-
-@inl get_curl(edges, signs, ucov, k) = @unroll sum(ucov[k, edges[e]] * signs[e] for e = 1:3)
-
-#========================= gradient =====================#
-
-@inl gradient(vsphere, ij::Int) =
-    Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
-
-@inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
-
 #=========================== TRiSK ======================#
 
-# weight inclues the factor 1/2 of the centered average of qe
-@inl TRiSK(vsphere, ij::Int, edge::Int) =
-    Fix(get_TRiSK, (ij, vsphere.trisk[edge, ij], vsphere.wee[edge, ij] / 2))
+# one-layer
+@gen TRiSK(vsphere, ij::Int, v::Val{N}) where N = quote
+    trisk = @unroll (vsphere.trisk[edge, ij] for edge=1:$N)
+    wee = @unroll (vsphere.wee[edge, ij] for edge=1:$N)
+    Fix(get_TRiSK1, (ij, v, trisk, wee))
+end
 
-@inl get_TRiSK(ij, edge, weight, du, U, qe, k) =
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U) where N = quote
+    @unroll sum((weight[e] * U[edge[e]]) for e in 1:$N)
+end
+
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k::Int) where N = quote
+    @unroll sum((weight[e] * U[k, edge[e]]) for e in 1:$N)
+end
+
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe) where N = quote
+    @unroll sum((weight[e] * U[edge[e]])*(qe[ij] + qe[edge[e]]) for e in 1:$N)/2
+end
+
+# multi-layer, non-linear
+# weight includes the factor 1/2 of the centered average of qe
+@inl TRiSK(vsphere, ij::Int, edge::Int) =
+    Fix(get_TRiSK2, (ij, vsphere.trisk[edge, ij], vsphere.wee[edge, ij] / 2))
+
+@inl get_TRiSK2(ij, edge, weight, du, U, qe, k) =
     muladd(weight * U[k, edge], qe[k, ij] + qe[k, edge], du[k, ij])
 
 end #===== module ====#
