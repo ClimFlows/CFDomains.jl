@@ -1,6 +1,7 @@
 module CFDomains
 using MutatingOrNot: void, Void
 using ManagedLoops: @loops, @unroll
+using Random: MersenneTwister
 
 macro fast(code)
     debug = haskey(ENV, "GF_DEBUG") && (ENV["GF_DEBUG"] != "")

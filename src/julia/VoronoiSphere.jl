@@ -114,7 +114,8 @@ which is a (non-dimensional) length on the unit sphere characterizing the mesh r
 By design, the Courant number for the wave equation with unit wave speed solved with time step `dt` is `dt/dx`.
 """
 function laplace_dx(mesh::VoronoiSphere)
-    h = randn(eltype(mesh.Ai), length(mesh.Ai))
+    rng = MersenneTwister(1234) # for reproducibility
+    h = randn(rng, eltype(mesh.Ai), length(mesh.Ai))
     u = similar(mesh.le_de)
     for i=1:20
         hmax = normL2(h)
