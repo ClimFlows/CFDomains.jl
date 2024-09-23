@@ -102,3 +102,32 @@ mass_coordinate(mc::MassCoordinate) = mc
 mass_coordinate(vc::SigmaCoordinate{N,F}, metric_cov=nothing) where {N,F} = SigmaMassCoordinate{N,F}()
 
 mass_level(k, masstot, ::SigmaMassCoordinate{N}, metric_cov=nothing) where N = masstot/N
+
+#============================== Hybrid coordinate =============================#
+
+struct HybridCoordinate{F, N} <: PressureCoordinate{N}
+    ptop::F
+    a::Vector{F}
+    b::Vector{F}
+end
+
+pressure_level(k, ps, vc::HybridCoordinate) = vc.a[k+1] + ps*vc.b[k+1]
+
+struct HybridMassCoordinate{F, N} <: MassCoordinate{N}
+    metric_cov::F
+    ptop::F
+    a::Vector{F}
+    b::Vector{F}
+end
+
+mass_coordinate(vc::HybridCoordinate{F,N}, metric_cov::F) where {F,N} =
+    HybridMassCoordinate{F,N}(metric_cov, vc.ptop, vc.a, vc.b)
+
+Base.@propagate_inbounds function mass_level(k, masstot, vc::HybridMassCoordinate)
+    # k==1 for first full level, k==3 for second full level, etc.
+    (; metric_cov, ptop, a, b) = vc
+    ps_cov = masstot + metric_cov*ptop
+    p_down = metric_cov*a[k] + ps_cov*b[k]
+    p_up = metric_cov*a[k+2] + ps_cov*b[k+2]
+    return p_down-p_up
+end
