@@ -1,6 +1,6 @@
 module CFDomains
 using MutatingOrNot: void, Void
-using ManagedLoops: @loops, @unroll
+using ManagedLoops: @loops, @unroll, @with
 using Random: MersenneTwister
 
 macro fast(code)
@@ -140,10 +140,12 @@ Unless you know what you are doing, it is recommended to use rather:
 which gets the data layout from `data_layout(layer)`. Otherwise, `multi_layer_domain` may be non-optimal or non-usable.
 """
 struct Shell{nz,Domain,Layout}
+    v::Val{nz}  # for Adapt.@adapt_structure
     layer::Domain
     layout::Layout
-    Shell(nz::Int, layer::D, layout::L) where {L,D} = new{nz,D,L}(layer, layout)
 end
+Shell(nz::Int, layer, layout) = Shell(Val(nz), layer, layout)
+
 """
     multi_layer_domain = shell(nz::Int, layer::AbstractDomain)
 

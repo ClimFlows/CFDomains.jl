@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.2.4"
+version = "0.2.5"
 
 [deps]
 ManagedLoops = "36a4119d-6b73-4371-88fe-ba2d91f5495d"
@@ -11,17 +11,21 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [weakdeps]
 SHTnsSpheres = "9e5c175a-5132-4517-85a1-2957ec255f89"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 
 [extensions]
 SHTnsSpheres_Ext = ["SHTnsSpheres"]
+CFDomainsAdaptExt = ["Adapt"]
 
 [compat]
+Adapt = "2, 3, 4"
 ManagedLoops = "0.1.8"
 PackageExtensionCompat = "1"
 SHTnsSpheres = "0.2.4"
 julia = "1.8"
 
 [extras]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 SHTnsSpheres = "9e5c175a-5132-4517-85a1-2957ec255f89"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
