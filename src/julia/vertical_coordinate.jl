@@ -105,23 +105,39 @@ mass_level(k, masstot, ::SigmaMassCoordinate{N}, metric_cov=nothing) where N = m
 
 #============================== Hybrid coordinate =============================#
 
-struct HybridCoordinate{F, N} <: PressureCoordinate{N}
+struct HybridCoordinate{F, N, VF<:AbstractVector{F}} <: PressureCoordinate{N}
     ptop::F
-    a::Vector{F}
-    b::Vector{F}
+    a::VF
+    b::VF
+    v::Val{N} # for Adapt.@adapt_structure
+end
+function HybridCoordinate(ptop::F, ai::VF, am::VF, bi::VF, bm::VF) where {F, VF<:AbstractVector{F} }
+    N = length(eachindex(am,bm))
+    @assert length(eachindex(ai,bi)) == N+1
+    HybridCoordinate(ptop, interleave(ai,am), interleave(bi,bm), Val(N))
+end
+
+function interleave(i,m)
+    v = [i[1]] # first interface
+    for j in eachindex(m)
+        push!(v, m[j]) # full level
+        push!(v, i[j+1]) # upper interface
+    end
+    return v
 end
 
 pressure_level(k, ps, vc::HybridCoordinate) = vc.a[k+1] + ps*vc.b[k+1]
 
-struct HybridMassCoordinate{F, N} <: MassCoordinate{N}
+struct HybridMassCoordinate{F, N, VF<:AbstractVector{F}} <: MassCoordinate{N}
     metric_cov::F
     ptop::F
-    a::Vector{F}
-    b::Vector{F}
+    a::VF
+    b::VF
+    v::Val{N}
 end
 
 mass_coordinate(vc::HybridCoordinate{F,N}, metric_cov::F) where {F,N} =
-    HybridMassCoordinate{F,N}(metric_cov, vc.ptop, vc.a, vc.b)
+    HybridMassCoordinate(metric_cov, vc.ptop, vc.a, vc.b, Val(N))
 
 Base.@propagate_inbounds function mass_level(k, masstot, vc::HybridMassCoordinate)
     # k==1 for first full level, k==3 for second full level, etc.

@@ -26,7 +26,7 @@ end
 const VSph = VoronoiSphere
 
 Base.show(io::IO, ::Type{<:VoronoiSphere{F}}) where F = print(io,
-    "VoronoiSphere{$F}")
+     "VoronoiSphere{$F}")
 Base.show(io::IO, sphere::VoronoiSphere) = print(io,
     "VoronoiSphere($(length(sphere.Ai)) cells, $(length(sphere.Av)) dual cells)")
 
@@ -93,41 +93,45 @@ allocate_shell(::Val{:vector}, dom::VSph, nz, nq, F::Type, backend=nothing) = ar
 
 #====================== Effective resolution ======================#
 
-function grad!(gradcov::AbstractVector, f, left_right)
-    @fast for ij in eachindex(gradcov)
-        gradcov[ij] = f[left_right[2,ij]]-f[left_right[1,ij]]
-    end
-end
-
-function div!(divu, ucov, degree, areas, edges, hodges, signs)
-    @fast for ij in eachindex(divu)
-        deg = degree[ij]
-        divu[ij] = inv(areas[ij]) * sum( (signs[e,ij]*hodges[edges[e,ij]])*ucov[edges[e,ij]] for e=1:deg )
-    end
-end
-
-normL2(f) = sqrt( sum(x*x for x in f)/length(f) )
+normL2(f) = sqrt( sum(x->x^2, f)/length(f) )
 
 """
 Estimates the largest eigenvalue `-lambda=dx^-2` of the scalar Laplace operator and returns `dx`
 which is a (non-dimensional) length on the unit sphere characterizing the mesh resolution.
 By design, the Courant number for the wave equation with unit wave speed solved with time step `dt` is `dt/dx`.
 """
-function laplace_dx(mesh::VoronoiSphere)
+function laplace_dx(mesh::VoronoiSphere, mgr=nothing)
     rng = MersenneTwister(1234) # for reproducibility
-    h = randn(rng, eltype(mesh.Ai), length(mesh.Ai))
-    u = similar(mesh.le_de)
+    h, u = similar(mesh.Ai), similar(mesh.le_de)
+    copy!(h, randn(rng, eltype(mesh.Ai), length(mesh.Ai)))
     for i=1:20
         hmax = normL2(h)
         @. h = inv(hmax)*h
-        gradient!(u, h, mesh)
-        divergence!(h, u, mesh)
+        gradient!(mgr, u, h, mesh)
+        divergence!(mgr, h, u, mesh)
     end
     return inv(sqrt(normL2(h))) :: eltype(mesh.le_de)
 end
 
-gradient!(u, h, mesh::VoronoiSphere) = grad!(u,h, mesh.edge_left_right)
-divergence!(h, u, mesh::VoronoiSphere) = div!(h, u, mesh.primal_deg, mesh.Ai, mesh.primal_edge, mesh.le_de, mesh.primal_ne)
+function gradient!(mgr, gradcov, f, mesh::VoronoiSphere)
+    left_right = mesh.edge_left_right
+    @with mgr, let ijrange = eachindex(gradcov)
+        @fast for ij in ijrange 
+            gradcov[ij] = f[left_right[2,ij]]-f[left_right[1,ij]]
+        end
+    end
+end
+
+function divergence!(mgr, divu, ucov, mesh::VoronoiSphere) 
+    degree, edges, signs = mesh.primal_deg, mesh.primal_edge, mesh.primal_ne
+    areas, hodges = mesh.Ai, mesh.le_de
+    @with mgr, let ijrange = eachindex(divu)
+        @fast for ij in ijrange
+            deg = degree[ij]
+            @unroll deg in 5:7  divu[ij] = inv(areas[ij]) * sum( (signs[e,ij]*hodges[edges[e,ij]])*ucov[edges[e,ij]] for e=1:deg )
+        end
+    end
+end
 
 #========================== Interpolation ===========================#
 
