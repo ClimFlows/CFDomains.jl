@@ -10,6 +10,10 @@ macro fast(code)
     end)
 end
 
+# for zipped broadcast
+include("julia/Zippers.jl")
+using .Zippers: zipper
+
 #====================  Abstract Domain types ====================#
 
 """
@@ -36,7 +40,6 @@ struct HyperDiffusion{fieldtype,D,F,X} <: AbstractFilter
     nu::F
     extra::X # pre-computed stuff, if any
 end
-
 
 #=============== Allocations ================#
 
@@ -227,7 +230,6 @@ end
 @inline SubMesh(sym::Symbol, dom::D) where {D} = SubMesh{sym,D}(dom)
 
 include("julia/voronoi_stencils.jl")
-
 include("julia/VoronoiSphere.jl")
 
 shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
