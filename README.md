@@ -9,7 +9,6 @@
 
 ### v0.3.0
 
-* breaking: `VoronoiSphere` expects new fields from mesh file reader
+* breaking: `VoronoiSphere` expects additional data from mesh file reader
 
-* new: stencils for `gradient_3d` and `perp` operators
-
+* new: Voronoi stencils for `gradient3d` and `perp` operators
