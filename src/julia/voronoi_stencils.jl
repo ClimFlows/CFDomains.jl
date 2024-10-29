@@ -1,5 +1,7 @@
 module Stencils
 
+using CFDomains: HVLayout
+
 using ManagedLoops: @unroll
 
 macro gen(expr)
@@ -88,13 +90,52 @@ end
 
 #========================= gradient =====================#
 
+"""
+    grad = gradient(vsphere, ij::Int)
+    flux[ij] = grad(q)         # single-layer
+    flux[k, ij] = grad(q, k)   # multi-layer
+
+Two-step computation of covariant gradient at edge `ij` of `vsphere`.
+"""
 @inl gradient(vsphere, ij::Int) =
     Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
 @inl get_gradient(left, right, q) = q[right] - q[left]
-
 @inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
 
+"""
+    grad = gradient3d(vsphere, ij::Int, Val(deg)) # deg = vsphere.primal_deg[ij]
+    gradq[ij] = grad(q)         # single-layer
+    gradq[k, ij] = grad(q, k)   # multi-layer
+
+Two-step computation of component of 3D gradient vector at primal cell `ij` of `vsphere`.
+Scalar (0-form) `q` is known at primal cells.
+"""
+@gen gradient3d(vsphere, cell, v::Val{deg}) where {deg} = quote
+    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
+    grads = @unroll (vsphere.primal_grad3d[edge, cell] for edge = 1:$deg)
+    return Fix(get_gradient3d, (v, cell, neighbours, grads))
+end
+@gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q, k) where {deg} = quote
+    dq = @unroll (q[neighbours[k, edge]] - q[k, cell] for edge = 1:$deg)
+    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
+end
+@gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q) where {deg} = quote
+    dq = @unroll (q[neighbours[edge]] - q[cell] for edge = 1:$deg)
+    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
+end
+
+# Kept for testing
+@gen gradient3d(vsphere, layout, cell, dim, v::Val{deg}) where {deg} = quote
+    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
+    grads = @unroll (vsphere.primal_grad3d[edge, cell][dim] for edge = 1:$deg)
+    return Fix(get_gradient3d, (layout, v, cell, neighbours, grads))
+end
+@gen get_gradient3d(::HVLayout{1}, ::Val{deg}, cell, neighbours, grads, q, k) where {deg} =
+    quote
+        dq = @unroll (q[neighbours[edge], k] - q[cell, k] for edge = 1:$deg)
+        @unroll sum(dq[edge] * grads[edge] for edge = 1:$deg)
+    end
 
 #======================= dot product ======================#
 
@@ -181,30 +222,30 @@ Two-step computation of TRiSK operator U⟂ or q×U at edge `ij` of `vsphere`.
     end
 """
 
-@gen TRiSK(vsphere, ij::Int, v::Val{N}) where N = quote
-    trisk = @unroll (vsphere.trisk[edge, ij] for edge=1:$N)
-    wee = @unroll (vsphere.wee[edge, ij] for edge=1:$N)
+@gen TRiSK(vsphere, ij::Int, v::Val{N}) where {N} = quote
+    trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
+    wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)
     Fix(get_TRiSK1, (ij, v, trisk, wee))
 end
 
 # single-layer, linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U) where N = quote
-    @unroll sum((weight[e] * U[edge[e]]) for e in 1:$N)
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U) where {N} = quote
+    @unroll sum((weight[e] * U[edge[e]]) for e = 1:$N)
 end
 
 # multi-layer, linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k::Int) where N = quote
-    @unroll sum((weight[e] * U[k, edge[e]]) for e in 1:$N)
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k::Int) where {N} = quote
+    @unroll sum((weight[e] * U[k, edge[e]]) for e = 1:$N)
 end
 
 # single-layer, non-linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe) where N = quote
-    @unroll sum((weight[e] * U[edge[e]])*(qe[ij] + qe[edge[e]]) for e in 1:$N)/2
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe) where {N} = quote
+    @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
 end
 
 # multi-layer, non-linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe, k) where N = quote
-    @unroll sum((weight[e] * U[k, edge[e]])*(qe[k, ij] + qe[k, edge[e]]) for e in 1:$N)/2
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe, k) where {N} = quote
+    @unroll sum((weight[e] * U[k, edge[e]]) * (qe[k, ij] + qe[k, edge[e]]) for e = 1:$N) / 2
 end
 
 # this implementation is less efficient but kept for benchmarking
@@ -215,5 +256,35 @@ end
 # multi-layer, nonlinear
 @inl get_TRiSK2(ij, edge, weight, du, U, qe, k) =
     muladd(weight * U[k, edge], qe[k, ij] + qe[k, edge], du[k, ij])
+
+
+#=========================== perp ======================#
+
+"""
+Two-step computation of perp operator U⟂ at edge `ij` of `vsphere`.
+Unlike the TRiSK operator, this operator is not antisymmetric but
+it has a smaller stencil and is numerically consistent.
+
+    op = perp(vsphere, ij)
+    U_perp[ij] = op(U)              # single-layer
+    U_perp[k, ij] = op(U, k::Int)   # multi-layer
+"""
+@inl perp(vsphere, edge) = perp(vsphere, VHLayout{1}(), edge)
+
+# The layout arg is kept only for testing since HVLayout is inefficient
+@inl perp(vsphere, layout, edge) = @unroll Fix(
+    get_perp,
+    (
+        layout,
+        (vsphere.edge_kite[ind, edge] for ind = 1:4),
+        (vsphere.edge_perp[ind, edge] for ind = 1:4),
+    ),
+)
+
+@inl get_perp(_, kite, wperp, un) = @unroll sum(un[kite[ind]] * wperp[ind] for ind = 1:4)
+@inl get_perp(_, kite, wperp, un, k) = @unroll sum(un[k, kite[ind]] * wperp[ind] for ind = 1:4)
+
+@inl get_perp(::HVLayout{1}, kite, wperp, un, k) =
+    @unroll sum(un[kite[ind], k] * wperp[ind] for ind = 1:4)
 
 end #===== module ====#
