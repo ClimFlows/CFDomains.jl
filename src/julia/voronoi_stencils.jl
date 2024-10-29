@@ -1,6 +1,6 @@
 module Stencils
 
-using CFDomains: HVLayout
+using CFDomains: HVLayout, VHLayout
 
 using ManagedLoops: @unroll
 
