@@ -1,8 +1,3 @@
-choices = (precision=Float32, meshname = "uni.1deg.mesh.nc")
-reader = DYNAMICO_reader(ncread, choices.meshname)
-sphere = VoronoiSphere(reader; prec = choices.precision)
-@info sphere
-
 function trisk_one_step(mgr, qU, sphere, q, U)
     @with mgr,
     let krange = axes(qU,1)
