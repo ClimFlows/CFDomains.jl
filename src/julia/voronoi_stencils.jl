@@ -25,6 +25,8 @@ MULTI(u) = "multi-layer, $(string(u))::AbstractMatrix"
 SCALAR(q) = "`$(string(q))` is a scalar field known at *primal* cells."
 DUALSCALAR(q) = "`$(string(q))` is a scalar field known at *dual* cells."
 EDGESCALAR(q) = "`$(string(q))` is a scalar field known at *edges*."
+DUAL2FORM(q) = "`$(string(q))` is a *density* (two-form) over *dual* cells. To obtain a scalar, divide `curlu` by the dual cell area `vsphere.Av`"
+
 COV(q) = "`$(string(q))` is a *covariant* vector field known at edges."
 CONTRA(q) = "`$(string(q))` is a *contravariant* vector field known at edges."
 
@@ -146,10 +148,9 @@ end
     curlu[dual_cell] = op(ucov)         # $(SINGLE(:ucov))
     curlu[k, dual_cell] = op(ucov, k)   # $(MULTI(:ucov))
 
-Compute curl of `ucov` at $DUAL of $SPH.
-
+Compute curl of `ucov` at $DUAL of $SPH. 
 $(COV(:ucov))
-$(DUALSCALAR(:q))
+$(DUAL2FORM(:curlu))
 
 $(INB(:curl, :op))
 """
@@ -174,7 +175,7 @@ end
 Compute gradient of `q` at $EDGE of $SPH.
 
 $(SCALAR(:q))
-$(COV(:gradcov))
+$(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
 $(INB(:gradient, :div))
 """
@@ -183,6 +184,22 @@ $(INB(:gradient, :div))
 
 @inl get_gradient(left, right, q) = q[right] - q[left]
 @inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
+
+"""
+    grad = gradperp(vsphere, edge)
+    flux[edge] = grad(psi)         # $(SINGLE(:q))
+    flux[k, edge] = grad(psi, k)   # $(MULTI(:q))
+
+Compute grad⟂ of streamfunction `psi` at $EDGE of $SPH.
+
+$(DUALSCALAR(:psi))
+$(CONTRA(:flux)) `flux` is numerically non-divergent.
+
+$(INB(:gradperp, :grad))
+"""
+@inl gradperp(vsphere, ij::Int) =
+    Fix(get_gradient, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
+
 
 """
     grad = gradient3d(vsphere, cell, Val(N))
