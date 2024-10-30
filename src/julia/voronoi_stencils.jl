@@ -12,6 +12,27 @@ macro inl(expr)
     esc(:(Base.@propagate_inbounds $expr))
 end
 
+# for docstrings
+const WRT = "with respect to the unit sphere"
+const SPH = "`vsphere::VoronoiSphere`"
+const CELL = "`cell::Int`"
+const EDGE = "`edge::Int`"
+const DUAL = "`dual_cell::Int`"
+const NEDGE = "`N=sphere.primal_deg[cell]` is the number of cell edges and must be provided as a compile-time constant for performance. This may be done via the macro `@unroll` from `ManagedLoops`. "
+INB(a,b) = "`@inbounds` propagates into `$(string(a))` and `$(string(b))`."
+SINGLE(u) = "single-layer, $(string(u))::AbstractVector"
+MULTI(u) = "multi-layer, $(string(u))::AbstractMatrix"
+SCALAR(q) = "`$(string(q))` is a scalar field known at *primal* cells."
+DUALSCALAR(q) = "`$(string(q))` is a scalar field known at *dual* cells."
+EDGESCALAR(q) = "`$(string(q))` is a scalar field known at *edges*."
+COV(q) = "`$(string(q))` is a *covariant* vector field known at edges."
+CONTRA(q) = "`$(string(q))` is a *contravariant* vector field known at edges."
+
+SINGLE(u,v) = "single-layer, `$(string(u))` and `$(string(v))` are ::AbstractVector"
+MULTI(u,v) = "multi-layer, `$(string(u))` and `$(string(v))` are ::AbstractMatrix"
+COV(u,v) = "`$(string(u))` and `$(string(v))` are *covariant* vector fields known at edges."
+CONTRA(u,v) = "`$(string(u))` and `$(string(v))` are *contravariant* vector fields known at edges."
+
 """
     g = Fix(f, args)
 Return callable `g` such that `g(x,...)` calls `f` by prepending `args...` before `x...`:
@@ -27,13 +48,35 @@ end
 
 #======================== averaging =======================#
 
-# cell -> edge
+"""
+    avg = average_ie(vsphere, edge)
+    qe[edge] = avg(qi)         # $(SINGLE(:qi))
+    qe[k, edge] = avg(qi, k)   # $(MULTI(:qi))
+
+Interpolate scalar field at $EDGE of $SPH by a centered average (second-order accurate).
+
+$(SCALAR(:qi))
+$(EDGESCALAR(:qe))
+
+$(INB(:average_ie, :avg))
+"""
 @inl average_ie(vsphere, ij) =
     Fix(get_average_ie, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
 @inl get_average_ie(left, right, mass, k) = (mass[k, left] + mass[k, right]) / 2
 
-# cell -> vertex
+"""
+    avg = average_iv(vsphere, dual_cell)
+    qv[dual_cell] = avg(qi)         # $(SINGLE(:qi))
+    qv[k, dual_cell] = avg(qi, k)   # $(MULTI(:qi))
+
+Interpolate scalar field at $DUAL of $SPH by an area-weighted average (first-order accurate).
+
+$(SCALAR(:qi))
+$(DUALSCALAR(:qv))
+
+$(INB(:average_iv, :avg))
+"""
 @inl function average_iv(vsphere, ij::Int)
     cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
     weights = @unroll (vsphere.Riv2[e, ij] for e = 1:3)
@@ -46,7 +89,18 @@ end
 @inl get_average_iv(cells, weights, mass, k) =
     @unroll sum(weights[e] * mass[k, cells[e]] for e = 1:3)
 
-# vertex -> edge
+"""
+    avg = average_ve(vsphere, edge)
+    qe[edge] = avg(qv)         # $(SINGLE(:qv))
+    qe[k, edge] = avg(qv, k)   # $(MULTI(:qv))
+
+Interpolate scalar field at $EDGE of $SPH by a centered average (first-order accurate).
+
+$(DUALSCALAR(:qv))
+$(EDGESCALAR(:qe))
+
+$(INB(:average_ve, :avg))
+"""
 @inl average_ve(vsphere, ij::Int) =
     Fix(get_average_ve, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
@@ -56,11 +110,21 @@ end
 
 #========================= divergence =======================#
 
-# flux must be a contravariant vector density = 2-form in 3D space
-# in X/s for the flux of X
+"""
+    div = divergence(vsphere, cell, Val(N))
+    dvg[cell] = div(flux) # $(SINGLE(:flux))
+    dvg[k, cell] = div(flux, k)  # $(MULTI(:flux))
 
-# signs include the inv_area factor
+Compute divergence $WRT of `flux` at $CELL of $SPH.
+$(CONTRA(:flux))
+$(SCALAR(:dvg))
+
+$NEDGE
+
+$(INB(:divergence, :div))
+"""
 @gen divergence(vsphere, ij::Int, v::Val{N}) where {N} = quote
+    # signs include the inv_area factor
     inv_area = inv(vsphere.Ai[ij])
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     signs = @unroll (inv_area * vsphere.primal_ne[e, ij] for e = 1:$N)
@@ -77,6 +141,18 @@ end
 
 #========================= curl =====================#
 
+"""
+    op = curl(vsphere, dual_cell)
+    curlu[dual_cell] = op(ucov)         # $(SINGLE(:ucov))
+    curlu[k, dual_cell] = op(ucov, k)   # $(MULTI(:ucov))
+
+Compute curl of `ucov` at $DUAL of $SPH.
+
+$(COV(:ucov))
+$(DUALSCALAR(:q))
+
+$(INB(:curl, :op))
+"""
 @inl function curl(vsphere, ij::Int)
     F = eltype(vsphere.Riv2)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
@@ -91,11 +167,16 @@ end
 #========================= gradient =====================#
 
 """
-    grad = gradient(vsphere, ij::Int)
-    flux[ij] = grad(q)         # single-layer
-    flux[k, ij] = grad(q, k)   # multi-layer
+    grad = gradient(vsphere, edge)
+    gradcov[edge] = grad(q)         # $(SINGLE(:q))
+    gradcov[k, edge] = grad(q, k)   # $(MULTI(:q))
 
-Two-step computation of covariant gradient at edge `ij` of `vsphere`.
+Compute gradient of `q` at $EDGE of $SPH.
+
+$(SCALAR(:q))
+$(COV(:gradcov))
+
+$(INB(:gradient, :div))
 """
 @inl gradient(vsphere, ij::Int) =
     Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
@@ -104,12 +185,17 @@ Two-step computation of covariant gradient at edge `ij` of `vsphere`.
 @inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
 
 """
-    grad = gradient3d(vsphere, ij::Int, Val(deg)) # deg = vsphere.primal_deg[ij]
-    gradq[ij] = grad(q)         # single-layer
-    gradq[k, ij] = grad(q, k)   # multi-layer
+    grad = gradient3d(vsphere, cell, Val(N))
+    gradq[ij] = grad(q)         # $(SINGLE(:q))
+    gradq[k, ij] = grad(q, k)   # $(MULTI(:q))
 
-Two-step computation of component of 3D gradient vector at primal cell `ij` of `vsphere`.
-Scalar (0-form) `q` is known at primal cells.
+Compute 3D gradient of `q` at $CELL of $SPH.
+$(SCALAR(:q))
+`gradq` is a 3D vector field yielding a 3-uple at each primal cell.
+
+$NEDGE
+
+$(INB(:gradient3d, :grad))
 """
 @gen gradient3d(vsphere, cell, v::Val{deg}) where {deg} = quote
     neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
@@ -140,25 +226,20 @@ end
 #======================= dot product ======================#
 
 """
-    dot_prod = dot_product(vsphere::VoronoiSphere, ij, v::Val{N})
+    dot_prod = dot_product(vsphere::VoronoiSphere, cell::Int, v::Val{N})
 
-Return the callable `dot_prod` which knows how to compute a dot product
-at primal cell `ij` of `sphere`. `N=sphere.primal_deg[ij]` is the number of edges
-and must be provided as a compile-time constant for performance.
-`dot_prod` is to be used as:
+    # $(SINGLE(:ucov, :vcov))
+    dp[cell] = dot_prod(ucov, vcov) 
 
-    dp_ij = dot_prod(ucov::V, vcov::V) # single layer, V<:AbstractVector
-    dp_ijk = dot_prod(ucov::M, vcov::M, k) # multi-layer, M<:AbstractMatrix
+    # $(MULTI(:ucov, :vcov))
+    dp[k, cell] = dot_prod(ucov, vcov, k)
 
-The dot product is with respect to the unit sphere and `vcov, ucov`
-represent covariant vector fields (1-forms).
+Compute dot product $WRT of `ucov`, `vcov` at $CELL of $SPH. 
+$(COV(:ucov, :vcov))
 
-@inbounds may be specified at either or both call sites, and will propagate, as in:
-    # do not check bounds when accessing mesh data
-    dot_prod = @inbounds dot_product(sphere::VoronoiSphere, ij, v::Val{N})
-    # do not check bounds when accessing ucov, vcov
-    dp_ij = @inbounds dot_prod(ucov::V, vcov::V)
+$NEDGE
 
+$(INB(:dot_product, :dot_prod))
 """
 @gen dot_product(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into inv_area
@@ -180,11 +261,22 @@ end
 #======================= centered flux ======================#
 
 """
-    cflux = centered_flux(vsphere, ij::Int)
-    flux[ij] = cflux(mass, ucov)         # single-layer
-    flux[k, ij] = cflux(mass, ucov, k)   # multi-layer
+    cflux = centered_flux(vsphere, edge)
+    flux[edge] = cflux(mass, ucov)         # $(SINGLE(:ucov))
+    flux[k, edge] = cflux(mass, ucov, k)   # $(MULTI(:ucov))
 
-Two-step computation of centered flux at edge `ij` of `vsphere`.
+Compute centered `flux` at $EDGE of $SPH, $WRT. 
+
+$(SCALAR(:mass))
+$(COV(:ucov))
+$(CONTRA(:flux)) 
+
+If `ucov` is  defined with respect to a physical metric (e.g. in m²⋅s⁻¹) 
+which is conformal, multiply `cflux` by the contravariant physical 
+metric factor (in m⁻²). `mass` being e.g. in kg, on gets a `flux` 
+in kg⋅s⁻¹ which can be fed into [`divergence`](@ref).
+
+$(INB(:centered_flux, :cflux))
 """
 @inl function centered_flux(vsphere, ij::Int)
     # le_de includes the factor 1/2 for the centered average
@@ -205,23 +297,23 @@ end
 #=========================== TRiSK ======================#
 
 """
-Two-step computation of TRiSK operator U⟂ or q×U at edge `ij` of `vsphere`.
+    trisk = TRiSK(vsphere, edge, Val(N))
+    U_perp[edge]    = trisk(U)        # linear, $(SINGLE(:U))
+    U_perp[k, edge] = trisk(U, k)     # linear, $(MULTI(:U))
+    qU[edge]        = trisk(U, q)     # nonlinear, single-layer
+    qU[k, edge]     = trisk(U, q, k)  # nonlinear, multi-layer
 
-    trisk = TRiSK(vsphere, ij, Val(deg)) # deg = vsphere.trisk_deg[ij]
-    U_perp[ij] = trisk(U)              # linear, single-layer
-    U_perp[k, ij] = trisk(U, k::Int)   # linear, multi-layer
-    qU[ij] = trisk(U, q)               # nonlinear, single-layer
-    qU[k, ij] = trisk(U, q, k)         # nonlinear, multi-layer
+Compute TRiSK operator U⟂ or q×U at $EDGE of $SPH.
 
-    qU[:, ij] = 0
-    for edge in 1:trisk_deg[ij]
-        trisk = TRiSK(vsphere, ij, edge) # edge ∈ 1:trisk_deg[ij]
-        for k in axes(qU,1)
-            qU[k, ij] = trisk(qU, U, q, k)  # nonlinear, multi-layer
-        end
-    end
+$(CONTRA(:U))
+$(COV(:U_perp))
+
+`N=sphere.trisk_deg[edge]` is the number of edges involved in the TRiSK stencil
+and must be provided as a compile-time constant for performance. 
+This may be done via the macro `@unroll` from `ManagedLoops`.
+
+$(INB(:TRiSK, :trisk))
 """
-
 @gen TRiSK(vsphere, ij::Int, v::Val{N}) where {N} = quote
     trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
     wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)
@@ -261,13 +353,19 @@ end
 #=========================== perp ======================#
 
 """
-Two-step computation of perp operator U⟂ at edge `ij` of `vsphere`.
+    op = perp(vsphere, ij)
+    U_perp[ij] = op(U)              # $(SINGLE(:U))
+    U_perp[k, ij] = op(U, k::Int)   # $(MULTI(:U))
+Compute the perp operator U⟂ at $EDGE of $SPH.
 Unlike the TRiSK operator, this operator is not antisymmetric but
 it has a smaller stencil and is numerically consistent.
 
-    op = perp(vsphere, ij)
-    U_perp[ij] = op(U)              # single-layer
-    U_perp[k, ij] = op(U, k::Int)   # multi-layer
+Array `U` represents a vector field U by its 
+components *normal* to edges of *primal* cells.
+`U_perp` represents similarly U⟂. Equivalently, it represents U  
+by its components *normal* to edges of *dual* cells.
+
+$(INB(:perp, :op))
 """
 @inl perp(vsphere, edge) = perp(vsphere, VHLayout{1}(), edge)
 
@@ -282,7 +380,8 @@ it has a smaller stencil and is numerically consistent.
 )
 
 @inl get_perp(_, kite, wperp, un) = @unroll sum(un[kite[ind]] * wperp[ind] for ind = 1:4)
-@inl get_perp(_, kite, wperp, un, k) = @unroll sum(un[k, kite[ind]] * wperp[ind] for ind = 1:4)
+@inl get_perp(_, kite, wperp, un, k) =
+    @unroll sum(un[k, kite[ind]] * wperp[ind] for ind = 1:4)
 
 @inl get_perp(::HVLayout{1}, kite, wperp, un, k) =
     @unroll sum(un[kite[ind], k] * wperp[ind] for ind = 1:4)
