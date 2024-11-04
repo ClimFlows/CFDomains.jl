@@ -30,7 +30,7 @@ struct VoronoiSphere{
     @fields (xyz_i, elon_i, elat_i)::VP
     @fields (xyz_e, elon_e, elat_e, normal_e, tangent_e)::VP
     @fields (xyz_v, elon_v, elat_v)::VP
-    cen2edge::MP
+    @fields (cen2edge, cen2vertex)::MP
 end
 const VSph = VoronoiSphere
 
@@ -86,6 +86,7 @@ function VoronoiSphere(read_data::Function; prec = Float32)
     data.normal_e, data.tangent_e =
         normal_tangents(data.elon_e, data.elat_e, data.angle_e)
     data.cen2edge = center_to_edge(data.xyz_i, data.xyz_e, data.primal_deg, data.primal_edge)
+    data.cen2vertex = center_to_edge(data.xyz_i, data.xyz_v, data.primal_deg, data.primal_vertex)
 
     # Store everything into a VoronoiSphere object
     names = fieldnames(VoronoiSphere)
