@@ -1,11 +1,11 @@
 # generic
 apply_primal(op, sphere, args...) = [
-    (@unroll N in 5:7 ret = op(sphere, cell, Val(N))(args...);
-    ret) for (cell, N) in enumerate(sphere.primal_deg)
+    (@unroll N in 5:7 op(sphere, cell, Val(N))(args...)) for
+    (cell, N) in enumerate(sphere.primal_deg)
 ]
 apply_trisk(op, sphere, args...) = [
-    (@unroll N in 9:10 ret = op(sphere, edge, Val(N))(args...);
-    ret) for (edge, N) in enumerate(sphere.trisk_deg)
+    (@unroll N in 9:10 op(sphere, edge, Val(N))(args...)) for
+    (edge, N) in enumerate(sphere.trisk_deg)
 ]
 apply(objects, op, sphere, args...) = [op(sphere, obj)(args...) for obj in objects(sphere)]
 
@@ -20,13 +20,15 @@ gradperp(sphere, qv) = apply(edges, Stencils.gradperp, sphere, qv)
 perp(sphere, un) = apply(edges, Stencils.perp, sphere, un)
 curl(sphere, ue) = apply(duals, Stencils.curl, sphere, ue)
 average_iv(sphere, qi) = apply(duals, Stencils.average_iv, sphere, qi)
+average_ie(sphere, qi) = apply(edges, Stencils.average_ie, sphere, qi)
+average_ve(sphere, qv) = apply(edges, Stencils.average_ve, sphere, qv)
 divergence(sphere, U) = apply_primal(Stencils.divergence, sphere, U)
 gradient3d(sphere, U) = apply_primal(Stencils.gradient3d, sphere, U)
 TRiSK(sphere, args...) = apply_trisk(Stencils.TRiSK, sphere, args...)
 
 # error measures
 Linf(x) = maximum(abs, x)
-Linf(x,y) = maximum(abs(a-b) for (a,b) in zip(x,y))
+Linf(x, y) = maximum(abs(a - b) for (a, b) in zip(x, y))
 maxeps(x) = Linf(x) * eps(eltype(x))
 
 function test_curlgrad(sphere, qi)
@@ -72,6 +74,14 @@ function test_gradient3d(tol, sphere, qi)
     gradq = gradient3d(sphere, qi)
     check = (dot(gq, gq) + q^2 - 1 for (q, gq) in zip(qi, gradq))
     return Linf(check) < tol
+end
+
+function test_average(tol, sphere, qi)
+    qie = average_ie(sphere, qi)
+    qiv = average_iv(sphere, qi)
+    qve = average_ve(sphere, qiv)
+    @info "test_average" Linf(qie, qve)
+    return true
 end
 
 dot(a::NTuple{3,F}, b::NTuple{3,F}) where {F} = @unroll sum(a[i] * b[i] for i = 1:3)

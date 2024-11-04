@@ -65,6 +65,7 @@ $(INB(:average_ie, :avg))
 @inl average_ie(vsphere, ij) =
     Fix(get_average_ie, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
+@inl get_average_ie(left, right, mass) = (mass[left] + mass[right]) / 2
 @inl get_average_ie(left, right, mass, k) = (mass[k, left] + mass[k, right]) / 2
 
 """

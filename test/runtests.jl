@@ -45,6 +45,7 @@ end
     @test test_perp(choices.tol, sphere) # accuracy
     @test test_div(choices.tol, sphere) # accuracy
     @test test_gradient3d(choices.tol, sphere, qi)
+    @test test_average(choices.tol, sphere, qi)
 end
 
 # include("benchmark.jl")
