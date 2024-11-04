@@ -65,6 +65,7 @@ $(INB(:average_ie, :avg))
 @inl average_ie(vsphere, ij) =
     Fix(get_average_ie, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
+@inl get_average_ie(left, right, mass) = (mass[left] + mass[right]) / 2
 @inl get_average_ie(left, right, mass, k) = (mass[k, left] + mass[k, right]) / 2
 
 """
@@ -220,7 +221,7 @@ $(INB(:gradient3d, :grad))
     return Fix(get_gradient3d, (v, cell, neighbours, grads))
 end
 @gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q, k) where {deg} = quote
-    dq = @unroll (q[neighbours[k, edge]] - q[k, cell] for edge = 1:$deg)
+    dq = @unroll (q[k, neighbours[edge]] - q[k, cell] for edge = 1:$deg)
     @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
 end
 @gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q) where {deg} = quote

@@ -34,17 +34,21 @@ to_lonlat = let
 end
 
 @testset "VoronoiSphere" begin
-    qi = [z for (x,y,z) in sphere.xyz_i]
-    qv = [z for (x,y,z) in sphere.xyz_v]
-    qe = [z for (x,y,z) in sphere.xyz_e]
+    levels = 1:8
+    qi = [z for k in levels, (x,y,z) in sphere.xyz_i]
+    qv = [z for k in levels, (x,y,z) in sphere.xyz_v]
+    qe = [z for k in levels, (x,y,z) in sphere.xyz_e]
 
-    @test test_curlgrad(sphere, qi) # curl∘grad == 0
-    @test test_divgradperp(sphere, qv)  # div∘gradperp == 0
-    @test test_TRiSK(sphere, qi, qv, qe)  # antisymmetry
-    @test test_curlTRiSK(sphere, qi)  # curl∘TRiSK = average_iv∘div
-    @test test_perp(choices.tol, sphere) # accuracy
-    @test test_div(choices.tol, sphere) # accuracy
-    @test test_gradient3d(choices.tol, sphere, qi)
+    # check mimetic identities
+    test_curlgrad(sphere, qi) # curl∘grad == 0
+    test_divgradperp(sphere, qv)  # div∘gradperp == 0
+    test_TRiSK(sphere, qi, qv, qe)  # antisymmetry
+    test_curlTRiSK(sphere, qi)  # curl∘TRiSK = average_iv∘div
+    # check accuracy
+    test_perp(choices.tol, sphere, levels) # accuracy
+    test_div(choices.tol, sphere, levels) # accuracy
+    test_average(choices.tol, sphere, qi) 
+    test_gradient3d(choices.tol, sphere, qi)
 end
 
 # include("benchmark.jl")

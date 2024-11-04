@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.3.1"
+version = "0.3.2"
 
 [deps]
 ManagedLoops = "36a4119d-6b73-4371-88fe-ba2d91f5495d"
@@ -19,7 +19,7 @@ CFDomainsAdaptExt = ["Adapt"]
 
 [compat]
 Adapt = "2, 3, 4"
-ManagedLoops = "0.1.8"
+ManagedLoops = "0.1.11"
 PackageExtensionCompat = "1"
 SHTnsSpheres = "0.2.4"
 julia = "1.8"
