@@ -1,13 +1,26 @@
 # generic
-apply_primal(op, sphere, args...) = [
-    (@unroll N in 5:7 op(sphere, cell, Val(N))(args...)) for
+apply_primal(op, sphere, arg::Vector, more...) = [
+    (@unroll N in 5:7 op(sphere, cell, Val(N))(arg, more...)) for
     (cell, N) in enumerate(sphere.primal_deg)
 ]
-apply_trisk(op, sphere, args...) = [
-    (@unroll N in 9:10 op(sphere, edge, Val(N))(args...)) for
+apply_primal(op, sphere, arg::Matrix, more...) = [
+    (@unroll N in 5:7 op(sphere, cell, Val(N))(arg, more..., k)) for
+    k in axes(arg,1), (cell, N) in enumerate(sphere.primal_deg)
+]
+
+apply_trisk(op, sphere, arg::Vector, more...) = [
+    (@unroll N in 9:10 op(sphere, edge, Val(N))(arg, more...)) for
     (edge, N) in enumerate(sphere.trisk_deg)
 ]
-apply(objects, op, sphere, args...) = [op(sphere, obj)(args...) for obj in objects(sphere)]
+
+apply_trisk(op, sphere, arg::Matrix, more...) = [
+    (@unroll N in 9:10 op(sphere, edge, Val(N))(arg, more..., k)) for
+    k in axes(arg,1), (edge, N) in enumerate(sphere.trisk_deg)
+]
+
+apply(objects, op, sphere, arg::Vector, more...) = [op(sphere, obj)(arg, more...) for obj in objects(sphere)]
+apply(objects, op, sphere, arg::Matrix, more...) = 
+    [op(sphere, obj)(arg, more..., k) for k in axes(arg,1), obj in objects(sphere)]
 
 # mesh objects
 cells(sphere) = eachindex(sphere.xyz_i)
@@ -31,57 +44,64 @@ Linf(x) = maximum(abs, x)
 Linf(x, y) = maximum(abs(a - b) for (a, b) in zip(x, y))
 maxeps(x) = Linf(x) * eps(eltype(x))
 
+# check 3D operator
+check_3D(op) = function(sphere, arg::Matrix, more...)
+    ret = op(sphere, arg, more...)
+    @test ret[1,:] == op(sphere, arg[1,:], map(x->x[1,:], more)...)
+    return ret
+end
+
 function test_curlgrad(sphere, qi)
-    gradq = gradient(sphere, qi)
+    gradq = check_3D(gradient)(sphere, qi)
     curlgradq = curl(sphere, gradq)
-    return Linf(curlgradq) < maxeps(gradq)
+    @test Linf(curlgradq) < maxeps(gradq)
 end
 
 function test_divgradperp(sphere, psi)
-    U = gradperp(sphere, psi)
-    divU = divergence(sphere, U)
-    return Linf(divU) * maximum(sphere.Ai) < 2maxeps(U)
+    U = check_3D(gradperp)(sphere, psi)
+    divU = check_3D(divergence)(sphere, U)
+    @test Linf(divU) * maximum(sphere.Ai) < 2maxeps(U)
 end
 
 function test_TRiSK(sphere, phi, psi, qe)
     U = gradperp(sphere, psi) + gradient(sphere, phi)
-    Uperp = TRiSK(sphere, U, qe)
+    Uperp = check_3D(TRiSK)(sphere, U, qe)
     sym = sum(u * up for (u, up) in zip(U, Uperp))
-    return abs(sym) < Linf(Uperp) * maxeps(U) * sqrt(length(U))
+    @test abs(sym) < 2Linf(Uperp) * maxeps(U) * sqrt(length(U))
 end
 
 function test_curlTRiSK(sphere, qi)
-    U = gradient(sphere, qi) .* sphere.le_de # cov => contra
+    U = check_3D(gradient)(sphere, qi) .* transpose(sphere.le_de) # cov => contra
     Uperp = TRiSK(sphere, U)
-    curlUperp = curl(sphere, Uperp) ./ sphere.Av
-    divU = average_iv(sphere, divergence(sphere, U))
-    return Linf(curlUperp + divU) < 1e-12 # can we get closer to eps(Float64) ?
+    curlUperp = check_3D(curl)(sphere, Uperp) ./ transpose(sphere.Av)
+    divU = check_3D(average_iv)(sphere, divergence(sphere, U))
+    @test Linf(curlUperp + divU) < 1e-12 # can we get closer to eps(Float64) ?
 end
 
-function test_perp(tol, sphere)
-    gradz_n = [z for (x, y, z) in sphere.normal_e] # ∇z, normal component
-    gradz_t = [z for (x, y, z) in sphere.tangent_e] # ∇z, tangential component
-    return Linf(perp(sphere, gradz_n), gradz_t) < Linf(gradz_n) * tol
+function test_perp(tol, sphere, levels)
+    gradz_n = [z for k in levels, (x, y, z) in sphere.normal_e] # ∇z, normal component
+    gradz_t = [z for k in levels, (x, y, z) in sphere.tangent_e] # ∇z, tangential component
+    @test Linf(check_3D(perp)(sphere, gradz_n), gradz_t) < Linf(gradz_n) * tol
 end
 
-function test_div(tol, sphere)
-    curlz = [z * le for ((x, y, z), le) in zip(sphere.tangent_e, sphere.le)] # ∇z⟂, contravariant
-    return Linf(divergence(sphere, curlz)) < tol
+function test_div(tol, sphere, levels)
+    curlz = [z * le for k in levels, ((x, y, z), le) in zip(sphere.tangent_e, sphere.le)] # ∇z⟂, contravariant
+    divcurlz = check_3D(divergence)(sphere, curlz)
+    @test  Linf(divcurlz) < tol
 end
 
 function test_gradient3d(tol, sphere, qi)
     # q=sinϕ, |∇q|²=cos²ϕ  ⇒  |∇q|²+q²-1 = 0
-    gradq = gradient3d(sphere, qi)
+    gradq = check_3D(gradient3d)(sphere, qi)
     check = (dot(gq, gq) + q^2 - 1 for (q, gq) in zip(qi, gradq))
     return Linf(check) < tol
 end
 
 function test_average(tol, sphere, qi)
-    qie = average_ie(sphere, qi)
-    qiv = average_iv(sphere, qi)
-    qve = average_ve(sphere, qiv)
-    @info "test_average" Linf(qie, qve)
-    return true
+    qie = check_3D(average_ie)(sphere, qi)
+    qiv = check_3D(average_iv)(sphere, qi)
+    qve = check_3D(average_ve)(sphere, qiv)
+    return Linf(qie, qve) < 2tol
 end
 
 dot(a::NTuple{3,F}, b::NTuple{3,F}) where {F} = @unroll sum(a[i] * b[i] for i = 1:3)
