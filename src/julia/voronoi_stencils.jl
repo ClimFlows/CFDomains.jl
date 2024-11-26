@@ -344,12 +344,12 @@ end
 end
 
 # multi-layer, linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k::Int) where {N} = quote
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k) where {N} = quote
     @unroll sum((weight[e] * U[k, edge[e]]) for e = 1:$N)
 end
 
 # single-layer, non-linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe) where {N} = quote
+@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe::AbstractVector) where {N} = quote
     @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
 end
 
