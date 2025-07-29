@@ -10,3 +10,4 @@ ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
 
 [compat]
 ClimFlowsData = "0.2"
+LoopManagers = "0.2"
