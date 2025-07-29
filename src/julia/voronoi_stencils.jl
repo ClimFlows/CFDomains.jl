@@ -244,7 +244,8 @@ end
 #======================= dot product ======================#
 
 """
-    dot_prod = dot_product(vsphere::VoronoiSphere, cell::Int, v::Val{N})
+    vsphere = dot_product(vsphere::VoronoiSphere) # optional, returns only relevant fields as a named tuple
+    dot_prod = dot_product(vsphere, cell::Int, v::Val{N})
 
     # $(SINGLE(:ucov, :vcov))
     dp[cell] = dot_prod(ucov, vcov) 
@@ -259,6 +260,11 @@ $NEDGE
 
 $(INB(:dot_product, :dot_prod))
 """
+function dot_product(vsphere) 
+    (; Ai, primal_edge, le_de) = vsphere
+    return (; Ai, primal_edge, le_de)
+end
+
 @gen dot_product(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into inv_area
     # inv_area is incorporated into hodges
