@@ -7,8 +7,8 @@ using LoopManagers: VectorizedCPU, MultiThread
 using ManagedLoops: @with, @vec, @unroll
 using SHTnsSpheres: SHTnsSphere
 using CFDomains: CFDomains, Stencils, VoronoiSphere
-using ClimFlowsData: DYNAMICO_reader
-using ClimFlowsPlots.SphericalInterpolations: lonlat_interp
+using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
+# using ClimFlowsPlots.SphericalInterpolations: lonlat_interp
 
 using Test
 
@@ -20,10 +20,11 @@ sph = SHTnsSphere(nlat)
 
 choices = (precision = Float64, meshname = "uni.1deg.mesh.nc", tol=1e-3)
 
-reader = DYNAMICO_reader(ncread, choices.meshname)
+reader = DYNAMICO_reader(ncread, DYNAMICO_meshfile(choices.meshname))
 sphere = VoronoiSphere(reader; prec = choices.precision)
 @info sphere
 
+#=
 to_lonlat = let
     F = choices.precision
     lons, lats = F.(1:2:360), F.(-89:2:90)
@@ -32,6 +33,7 @@ to_lonlat = let
     interp = lonlat_interp(sphere, lons, lats)
     permute ∘ interp ∘ Array
 end
+=#
 
 @testset "VoronoiSphere" begin
     levels = 1:8
