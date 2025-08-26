@@ -195,6 +195,26 @@ allocate_field(val::Val, nq::Int, shell::Shell{nz}, F, mgr) where {nz} =
 # @inline interior(x::AbstractDomain) = interior(typeof(x))
 # @inline interior(domain::Type) = domain
 
+"""
+    x_ji = transpose!(x_ji, mgr, x_ij)
+    y_ji = transpose!(void, mgr, y_ij)
+
+Transposes `x_ij` and writes the result into `x_ji`, which may be `::Void`, in which case it is allocated.
+
+When working with shells it is sometimes useful to transpose fields for performance.
+CFDomains.transpose! can be specialized for specific managers, for instance:
+
+    import CFDomains: transpose!, Void
+    using Strided: @strided
+    function transpose!(x, ::MultiThread, y)
+       @strided permutedims!(x, y, (2,1))
+       return x # otherwise returns a StridedView
+    end
+    transpose!(::Void, ::MultiThread, y) = permutedims(y, (2,1)) # for non-ambiguity
+"""
+transpose!(::Void, mgr, y) = permutedims(y, (2, 1))
+transpose!(x, mgr, y) = permutedims!(x, y, (2, 1))
+
 #======================== Box ========================#
 
 meshgrid(ai, bj) = [a for a in ai, b in bj], [b for a in ai, b in bj]
