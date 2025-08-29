@@ -260,7 +260,7 @@ $NEDGE
 
 $(INB(:dot_product, :dot_prod))
 """
-function dot_product(vsphere) 
+@inl function dot_product(vsphere) 
     (; Ai, primal_edge, le_de) = vsphere
     return (; Ai, primal_edge, le_de)
 end
@@ -280,6 +280,46 @@ end
 
 @gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
     @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
+end
+
+#======================= contraction ======================#
+
+"""
+    vsphere = contraction(vsphere::VoronoiSphere) # optional, returns only relevant fields as a named tuple
+    contract = contraction(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:ucontra, :vcov))
+    uv[cell] = contract(ucontra, vcov) 
+
+    # $(MULTI(:ucontra, :vcov))
+    uv[k, cell] = contract(ucontra, vcov, k)
+
+Compute the contraction of `ucov` and `vcov` at $CELL of $SPH. 
+$(CONTRA(:ucontra))
+$(COV(:vcov))
+
+$NEDGE
+
+$(INB(:contraction, :contract))
+"""
+@inl function contraction(vsphere)
+    (; Ai, primal_edge) = vsphere
+    return (; Ai, primal_edge)
+end
+
+@gen contraction(vsphere, ij, v::Val{N}) where {N} = quote
+    # the factor 1/2 for the Perot formula is incorporated into inv_area
+    inv_area = inv(2 * vsphere.Ai[ij])
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    return Fix(get_contraction, (v, edges, inv_area))
+end
+
+@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov) where {N} = quote
+    inv_area * @unroll sum(ucontra[edges[e]] * vcov[edges[e]] for e = 1:$N)
+end
+
+@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov, k) where {N} = quote
+    inv_area * @unroll sum(ucontra[k, edges[e]] * vcov[k, edges[e]] for e = 1:$N)
 end
 
 #======================= centered flux ======================#
@@ -338,6 +378,11 @@ This may be done via the macro `@unroll` from `ManagedLoops`.
 
 $(INB(:TRiSK, :trisk))
 """
+@inl function TRiSK(vsphere)
+    (; trisk, wee) = vsphere
+    return (; trisk, wee)
+end
+
 @gen TRiSK(vsphere, ij::Int, v::Val{N}) where {N} = quote
     trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
     wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)

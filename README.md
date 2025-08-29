@@ -8,8 +8,16 @@
 
 ## Change Log
 
-### v0.3.0
+### v0.3
 
-* breaking: `VoronoiSphere` expects additional data from mesh file reader
+* breaking: `VoronoiSphere` expects additional data from mesh file reader (#11)
 
-* new: Voronoi stencils for `gradient3d` and `perp` operators
+* new: 
+  * 0.3.6: `transpose!` (#17)
+  * 0.3.5: single-argument call to Voronoi stencil extracts relevant mesh data ; useful to pass fewer arguments to GPU kernels  (#16)
+  * 0.3.3: compute `cen2vertex`, needed for transport scheme on Voronoi meshes  (#14)
+  * 0.3.0: Voronoi stencils for `gradient3d` and `perp` operators (#11)
+
+* fixed: 
+  * 0.3.2: Voronoi averaging stencils (#13)
+  * 0.3.4: dispatch for Trisk operator
