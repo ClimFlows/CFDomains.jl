@@ -1,26 +1,27 @@
 # generic
+
 apply_primal(op, sphere, arg::Vector, more...) = [
-    (@unroll N in 5:7 op(sphere, cell, Val(N))(arg, more...)) for
+    (@unroll N in 5:7 op(op(sphere), cell, Val(N))(arg, more...)) for
     (cell, N) in enumerate(sphere.primal_deg)
 ]
 apply_primal(op, sphere, arg::Matrix, more...) = [
-    (@unroll N in 5:7 op(sphere, cell, Val(N))(arg, more..., k)) for
+    (@unroll N in 5:7 op(op(sphere), cell, Val(N))(arg, more..., k)) for
     k in axes(arg,1), (cell, N) in enumerate(sphere.primal_deg)
 ]
 
 apply_trisk(op, sphere, arg::Vector, more...) = [
-    (@unroll N in 9:10 op(sphere, edge, Val(N))(arg, more...)) for
+    (@unroll N in 9:10 op(op(sphere), edge, Val(N))(arg, more...)) for
     (edge, N) in enumerate(sphere.trisk_deg)
 ]
 
 apply_trisk(op, sphere, arg::Matrix, more...) = [
-    (@unroll N in 9:10 op(sphere, edge, Val(N))(arg, more..., k)) for
+    (@unroll N in 9:10 op(op(sphere), edge, Val(N))(arg, more..., k)) for
     k in axes(arg,1), (edge, N) in enumerate(sphere.trisk_deg)
 ]
 
-apply(objects, op, sphere, arg::Vector, more...) = [op(sphere, obj)(arg, more...) for obj in objects(sphere)]
+apply(objects, op, sphere, arg::Vector, more...) = [op(op(sphere), obj)(arg, more...) for obj in objects(sphere)]
 apply(objects, op, sphere, arg::Matrix, more...) = 
-    [op(sphere, obj)(arg, more..., k) for k in axes(arg,1), obj in objects(sphere)]
+    [op(op(sphere), obj)(arg, more..., k) for k in axes(arg,1), obj in objects(sphere)]
 
 # mesh objects
 cells(sphere) = eachindex(sphere.xyz_i)
