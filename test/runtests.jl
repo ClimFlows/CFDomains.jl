@@ -6,7 +6,7 @@ using BenchmarkTools
 using LoopManagers: VectorizedCPU, MultiThread
 using ManagedLoops: @with, @vec, @unroll
 using SHTnsSpheres: SHTnsSphere
-using CFDomains: CFDomains, Stencils, VoronoiSphere
+using CFDomains: CFDomains, Stencils, VoronoiSphere, transpose!, void
 using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
 # using ClimFlowsPlots.SphericalInterpolations: lonlat_interp
 
@@ -34,6 +34,13 @@ to_lonlat = let
     permute ∘ interp ∘ Array
 end
 =#
+
+@testset "transpose!" begin
+    x = randn(3,4)
+    y = transpose!(void, nothing, x)
+    @test y == transpose!(similar(y), void, x)
+    @test y == x'
+end
 
 @testset "VoronoiSphere" begin
     levels = 1:8
