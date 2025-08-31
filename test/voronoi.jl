@@ -32,12 +32,15 @@ edges(sphere) = eachindex(sphere.xyz_e)
 gradient(sphere, qi) = apply(edges, Stencils.gradient, sphere, qi)
 gradperp(sphere, qv) = apply(edges, Stencils.gradperp, sphere, qv)
 perp(sphere, un) = apply(edges, Stencils.perp, sphere, un)
+centered_flux(sphere, qi, un) = apply(edges, Stencils.centered_flux, sphere, qi, un)
 curl(sphere, ue) = apply(duals, Stencils.curl, sphere, ue)
 average_iv(sphere, qi) = apply(duals, Stencils.average_iv, sphere, qi)
 average_ie(sphere, qi) = apply(edges, Stencils.average_ie, sphere, qi)
 average_ve(sphere, qv) = apply(edges, Stencils.average_ve, sphere, qv)
 divergence(sphere, U) = apply_primal(Stencils.divergence, sphere, U)
 gradient3d(sphere, U) = apply_primal(Stencils.gradient3d, sphere, U)
+dot_product(sphere, U) = apply_primal(Stencils.dot_product, sphere, U, U)
+contraction(sphere, U) = apply_primal(Stencils.contraction, sphere, U, U)
 TRiSK(sphere, args...) = apply_trisk(Stencils.TRiSK, sphere, args...)
 
 # error measures
@@ -83,6 +86,9 @@ function test_perp(tol, sphere, levels)
     gradz_n = [z for k in levels, (x, y, z) in sphere.normal_e] # ∇z, normal component
     gradz_t = [z for k in levels, (x, y, z) in sphere.tangent_e] # ∇z, tangential component
     @test Linf(check_3D(perp)(sphere, gradz_n), gradz_t) < Linf(gradz_n) * tol
+    # test dot_product with same data
+    check_3D(dot_product)(sphere, gradz_n)    
+    check_3D(contraction)(sphere, gradz_n)    
 end
 
 function test_div(tol, sphere, levels)
@@ -102,6 +108,7 @@ function test_average(tol, sphere, qi)
     qie = check_3D(average_ie)(sphere, qi)
     qiv = check_3D(average_iv)(sphere, qi)
     qve = check_3D(average_ve)(sphere, qiv)
+    check_3D(centered_flux)(sphere, qi, qie)
     return Linf(qie, qve) < 2tol
 end
 
