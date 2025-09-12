@@ -12,7 +12,14 @@ macro inl(expr)
     esc(:(Base.@propagate_inbounds $expr))
 end
 
+macro lhs(x::Expr) # in assignment 'a=b', returns 'a' instead of 'b'
+    @assert x.head == :(=)
+    a, b = x.args
+    return esc( :( $a=$b ; $a))
+end
+
 # for docstrings
+const OPTIONAL = "optional, returns only relevant fields as a named tuple"
 const WRT = "with respect to the unit sphere"
 const SPH = "`vsphere::VoronoiSphere`"
 const CELL = "`cell::Int`"
@@ -51,6 +58,7 @@ end
 #======================== averaging =======================#
 
 """
+    vsphere = average_ie(vsphere) # $OPTIONAL
     avg = average_ie(vsphere, edge)
     qe[edge] = avg(qi)         # $(SINGLE(:qi))
     qe[k, edge] = avg(qi, k)   # $(MULTI(:qi))
@@ -62,6 +70,7 @@ $(EDGESCALAR(:qe))
 
 $(INB(:average_ie, :avg))
 """
+@inl average_ie(vsphere) = @lhs (; edge_left_right) = vsphere
 @inl average_ie(vsphere, ij) =
     Fix(get_average_ie, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
@@ -69,6 +78,7 @@ $(INB(:average_ie, :avg))
 @inl get_average_ie(left, right, mass, k) = (mass[k, left] + mass[k, right]) / 2
 
 """
+    vsphere = average_iv(vsphere) # $OPTIONAL
     avg = average_iv(vsphere, dual_cell)
     qv[dual_cell] = avg(qi)         # $(SINGLE(:qi))
     qv[k, dual_cell] = avg(qi, k)   # $(MULTI(:qi))
@@ -80,6 +90,8 @@ $(DUALSCALAR(:qv))
 
 $(INB(:average_iv, :avg))
 """
+@inl average_iv(vsphere) = @lhs (; dual_vertex, Riv2) = vsphere
+
 @inl function average_iv(vsphere, ij::Int)
     cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
     weights = @unroll (vsphere.Riv2[e, ij] for e = 1:3)
@@ -93,6 +105,7 @@ end
     @unroll sum(weights[e] * mass[k, cells[e]] for e = 1:3)
 
 """
+    vsphere = average_ve(vsphere) # $OPTIONAL
     avg = average_ve(vsphere, edge)
     qe[edge] = avg(qv)         # $(SINGLE(:qv))
     qe[k, edge] = avg(qv, k)   # $(MULTI(:qv))
@@ -104,6 +117,7 @@ $(EDGESCALAR(:qe))
 
 $(INB(:average_ve, :avg))
 """
+@inl average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
 @inl average_ve(vsphere, ij::Int) =
     Fix(get_average_ve, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
@@ -114,6 +128,7 @@ $(INB(:average_ve, :avg))
 #========================= divergence =======================#
 
 """
+    vsphere = divergence(vsphere) # $OPTIONAL
     div = divergence(vsphere, cell, Val(N))
     dvg[cell] = div(flux) # $(SINGLE(:flux))
     dvg[k, cell] = div(flux, k)  # $(MULTI(:flux))
@@ -126,6 +141,8 @@ $NEDGE
 
 $(INB(:divergence, :div))
 """
+@inl divergence(vsphere) = @lhs (; Ai, primal_edge, primal_ne) = vsphere
+
 @gen divergence(vsphere, ij::Int, v::Val{N}) where {N} = quote
     # signs include the inv_area factor
     inv_area = inv(vsphere.Ai[ij])
@@ -145,6 +162,7 @@ end
 #========================= curl =====================#
 
 """
+    vsphere = curl(vsphere) # $OPTIONAL
     op = curl(vsphere, dual_cell)
     curlu[dual_cell] = op(ucov)         # $(SINGLE(:ucov))
     curlu[k, dual_cell] = op(ucov, k)   # $(MULTI(:ucov))
@@ -155,6 +173,8 @@ $(DUAL2FORM(:curlu))
 
 $(INB(:curl, :op))
 """
+@inl curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
+
 @inl function curl(vsphere, ij::Int)
     F = eltype(vsphere.Riv2)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
@@ -169,6 +189,7 @@ end
 #========================= gradient =====================#
 
 """
+    vsphere = gradient(vsphere) # $OPTIONAL
     grad = gradient(vsphere, edge)
     gradcov[edge] = grad(q)         # $(SINGLE(:q))
     gradcov[k, edge] = grad(q, k)   # $(MULTI(:q))
@@ -180,6 +201,8 @@ $(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
 $(INB(:gradient, :div))
 """
+@inl gradient(vsphere) = @lhs (; edge_left_right) = vsphere
+
 @inl gradient(vsphere, ij::Int) =
     Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
@@ -187,6 +210,7 @@ $(INB(:gradient, :div))
 @inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
 
 """
+    vsphere = gradperp(vsphere) # $OPTIONAL
     grad = gradperp(vsphere, edge)
     flux[edge] = grad(psi)         # $(SINGLE(:q))
     flux[k, edge] = grad(psi, k)   # $(MULTI(:q))
@@ -198,11 +222,13 @@ $(CONTRA(:flux)) `flux` is numerically non-divergent.
 
 $(INB(:gradperp, :grad))
 """
+@inl gradperp(vsphere) = @lhs (; edge_down_up) = vsphere
 @inl gradperp(vsphere, ij::Int) =
     Fix(get_gradient, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
 
 """
+    vsphere = gradient3d(vsphere) # $OPTIONAL
     grad = gradient3d(vsphere, cell, Val(N))
     gradq[ij] = grad(q)         # $(SINGLE(:q))
     gradq[k, ij] = grad(q, k)   # $(MULTI(:q))
@@ -215,6 +241,8 @@ $NEDGE
 
 $(INB(:gradient3d, :grad))
 """
+@inl gradient3d(vsphere) = @lhs (; primal_neighbour, primal_grad3d) = vsphere
+
 @gen gradient3d(vsphere, cell, v::Val{deg}) where {deg} = quote
     neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
     grads = @unroll (vsphere.primal_grad3d[edge, cell] for edge = 1:$deg)
@@ -241,10 +269,10 @@ end
         @unroll sum(dq[edge] * grads[edge] for edge = 1:$deg)
     end
 
-#======================= dot product ======================#
+#================= dot product (covariant inputs) =================#
 
 """
-    vsphere = dot_product(vsphere::VoronoiSphere) # optional, returns only relevant fields as a named tuple
+    vsphere = dot_product(vsphere::VoronoiSphere) # $OPTIONAL
     dot_prod = dot_product(vsphere, cell::Int, v::Val{N})
 
     # $(SINGLE(:ucov, :vcov))
@@ -260,10 +288,7 @@ $NEDGE
 
 $(INB(:dot_product, :dot_prod))
 """
-function dot_product(vsphere) 
-    (; Ai, primal_edge, le_de) = vsphere
-    return (; Ai, primal_edge, le_de)
-end
+@inl dot_product(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
 
 @gen dot_product(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into inv_area
@@ -282,9 +307,76 @@ end
     @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
 end
 
+#=============== dot product (contravariant inputs) ===============#
+
+"""
+    vsphere = dot_prod_contra(vsphere::VoronoiSphere) # $OPTIONAL
+    dot_prod = dot_prod_contra(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:U, :V))
+    dp[cell] = dot_prod(U, V) 
+
+    # $(MULTI(:U, :V))
+    dp[k, cell] = dot_prod(U, V, k)
+
+Compute dot product $WRT of `U`, `V` at $CELL of $SPH. 
+$(CONTRA(:U, :V))
+
+$NEDGE
+
+$(INB(:dot_prod_contra, :dot_prod))
+"""
+@inl dot_prod_contra(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
+
+@gen dot_prod_contra(vsphere, ij, v::Val{N}) where {N} = quote
+    # inv(2*area) is incorporated into hodges
+    dbl_area = 2 * vsphere.Ai[ij]
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    hodges = @unroll (inv(dbl_area * vsphere.le_de[edges[e]]) for e = 1:$N)
+    return Fix(get_dot_product, (v, edges, hodges))
+end
+
+#======================= contraction ======================#
+
+"""
+    vsphere = contraction(vsphere::VoronoiSphere) # $OPTIONAL
+    contract = contraction(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:ucontra, :vcov))
+    uv[cell] = contract(ucontra, vcov) 
+
+    # $(MULTI(:ucontra, :vcov))
+    uv[k, cell] = contract(ucontra, vcov, k)
+
+Compute the contraction of `ucov` and `vcov` at $CELL of $SPH. 
+$(CONTRA(:ucontra))
+$(COV(:vcov))
+
+$NEDGE
+
+$(INB(:contraction, :contract))
+"""
+@inl contraction(vsphere) = @lhs (; Ai, primal_edge) = vsphere
+
+@gen contraction(vsphere, ij, v::Val{N}) where {N} = quote
+    # the factor 1/2 for the Perot formula is incorporated into inv_area
+    inv_area = inv(2 * vsphere.Ai[ij])
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    return Fix(get_contraction, (v, edges, inv_area))
+end
+
+@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov) where {N} = quote
+    inv_area * @unroll sum(ucontra[edges[e]] * vcov[edges[e]] for e = 1:$N)
+end
+
+@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov, k) where {N} = quote
+    inv_area * @unroll sum(ucontra[k, edges[e]] * vcov[k, edges[e]] for e = 1:$N)
+end
+
 #======================= centered flux ======================#
 
 """
+    vsphere = centered_flux(vsphere) # $OPTIONAL
     cflux = centered_flux(vsphere, edge)
     flux[edge] = cflux(mass, ucov)         # $(SINGLE(:ucov))
     flux[k, edge] = cflux(mass, ucov, k)   # $(MULTI(:ucov))
@@ -302,6 +394,8 @@ in kg⋅s⁻¹ which can be fed into [`divergence`](@ref).
 
 $(INB(:centered_flux, :cflux))
 """
+@inl centered_flux(vsphere) = @lhs (; edge_left_right, le_de) = vsphere
+
 @inl function centered_flux(vsphere, ij::Int)
     # le_de includes the factor 1/2 for the centered average
     left_right, le_de = vsphere.edge_left_right, vsphere.le_de
@@ -321,6 +415,7 @@ end
 #=========================== TRiSK ======================#
 
 """
+    vsphere = TRiSK(vsphere) # $OPTIONAL
     trisk = TRiSK(vsphere, edge, Val(N))
     U_perp[edge]    = trisk(U)        # linear, $(SINGLE(:U))
     U_perp[k, edge] = trisk(U, k)     # linear, $(MULTI(:U))
@@ -338,6 +433,8 @@ This may be done via the macro `@unroll` from `ManagedLoops`.
 
 $(INB(:TRiSK, :trisk))
 """
+@inl TRiSK(vsphere) = @lhs (; trisk, wee) = vsphere
+
 @gen TRiSK(vsphere, ij::Int, v::Val{N}) where {N} = quote
     trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
     wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)
@@ -377,6 +474,7 @@ end
 #=========================== perp ======================#
 
 """
+    op = perp(vsphere) # $OPTIONAL
     op = perp(vsphere, ij)
     U_perp[ij] = op(U)              # $(SINGLE(:U))
     U_perp[k, ij] = op(U, k::Int)   # $(MULTI(:U))
@@ -391,6 +489,8 @@ by its components *normal* to edges of *dual* cells.
 
 $(INB(:perp, :op))
 """
+@inl perp(vsphere) = @lhs (; edge_kite, edge_perp) = vsphere
+
 @inl perp(vsphere, edge) = perp(vsphere, VHLayout{1}(), edge)
 
 # The layout arg is kept only for testing since HVLayout is inefficient
