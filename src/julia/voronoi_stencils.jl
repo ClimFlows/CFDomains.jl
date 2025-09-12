@@ -269,7 +269,7 @@ end
         @unroll sum(dq[edge] * grads[edge] for edge = 1:$deg)
     end
 
-#======================= dot product ======================#
+#================= dot product (covariant inputs) =================#
 
 """
     vsphere = dot_product(vsphere::VoronoiSphere) # $OPTIONAL
@@ -305,6 +305,35 @@ end
 
 @gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
     @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
+end
+
+#=============== dot product (contravariant inputs) ===============#
+
+"""
+    vsphere = dot_prod_contra(vsphere::VoronoiSphere) # $OPTIONAL
+    dot_prod = dot_prod_contra(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:U, :V))
+    dp[cell] = dot_prod(U, V) 
+
+    # $(MULTI(:U, :V))
+    dp[k, cell] = dot_prod(U, V, k)
+
+Compute dot product $WRT of `U`, `V` at $CELL of $SPH. 
+$(CONTRA(:U, :V))
+
+$NEDGE
+
+$(INB(:dot_prod_contra, :dot_prod))
+"""
+@inl dot_prod_contra(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
+
+@gen dot_prod_contra(vsphere, ij, v::Val{N}) where {N} = quote
+    # inv(2*area) is incorporated into hodges
+    dbl_area = 2 * vsphere.Ai[ij]
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    hodges = @unroll (inv(dbl_area * vsphere.le_de[edges[e]]) for e = 1:$N)
+    return Fix(get_dot_product, (v, edges, hodges))
 end
 
 #======================= contraction ======================#
