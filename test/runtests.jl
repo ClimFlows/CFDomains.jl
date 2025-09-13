@@ -12,6 +12,7 @@ using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
 
 using Test
 
+include("zero_arrays.jl")
 include("voronoi.jl")
 
 nlat = 16

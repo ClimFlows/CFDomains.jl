@@ -13,8 +13,9 @@
 * breaking: `VoronoiSphere` expects additional data from mesh file reader (#11)
 
 * new: 
-  * 0.3.6: new Voronoi stencil for dot products (#19)
+  * 0.3.7: `zero_array` (#20)
   * 0.3.6: `transpose!` (#19)
+  * 0.3.6: new Voronoi stencil for dot products (#19)
   * 0.3.5: single-argument call to Voronoi stencil extracts relevant mesh data ; useful to pass fewer arguments to GPU kernels  (#16)
   * 0.3.3: compute `cen2vertex`, needed for transport scheme on Voronoi meshes  (#14)
   * 0.3.0: Voronoi stencils for `gradient3d` and `perp` operators (#11)

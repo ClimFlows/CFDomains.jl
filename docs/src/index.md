@@ -26,3 +26,8 @@ Modules = [CFDomains.VerticalInterpolation]
 ```@autodocs
 Modules = [CFDomains.Stencils]
 ```
+
+## Virtual zero-filled arrays
+```@autodocs
+Modules = [CFDomains.ZeroArrays]
+```
