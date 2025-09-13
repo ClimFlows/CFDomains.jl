@@ -36,4 +36,8 @@ end
 
 @inline Base.muladd(::Number, ::Zero, c::Number) = c
 
+@inline Base.:(==)(x::Number, ::Zero) = (x==0)
+@inline Base.:(==)(::Zero, x::Number) = (x==0)
+@inline Base.:(==)(::Zero, x::Zero) = true
+
 end
