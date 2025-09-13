@@ -10,6 +10,9 @@ macro fast(code)
     end)
 end
 
+# lightweight zero-filled arrays, used by CFHydrostatics and CFCompressible
+include("julia/zero_arrays.jl")
+
 # for zipped broadcast
 include("julia/Zippers.jl")
 using .Zippers: zipper
