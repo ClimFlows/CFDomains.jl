@@ -510,4 +510,18 @@ $(INB(:perp, :op))
 @inl get_perp(::HVLayout{1}, kite, wperp, un, k) =
     @unroll sum(un[kite[ind], k] * wperp[ind] for ind = 1:4)
 
+#===================== helpers hiding @unroll ====================#
+
+@inl function on_cell_edges(fun, deg)
+    @unroll deg in 5:7 begin
+        fun(Val(deg))
+    end
+end
+
+@inl function on_trisk_edges(fun, deg)
+    @unroll deg in 9:11 begin
+        fun(Val(deg))
+    end
+end
+
 end #===== module ====#
