@@ -32,7 +32,8 @@ MULTI(u) = "multi-layer, $(string(u))::AbstractMatrix"
 SCALAR(q) = "`$(string(q))` is a scalar field known at *primal* cells."
 DUALSCALAR(q) = "`$(string(q))` is a scalar field known at *dual* cells."
 EDGESCALAR(q) = "`$(string(q))` is a scalar field known at *edges*."
-DUAL2FORM(q) = "`$(string(q))` is a *density* (two-form) over *dual* cells. To obtain a scalar, divide `curlu` by the dual cell area `vsphere.Av`"
+DUAL2FORM(q) = "`$(string(q))` is a *density* (two-form) over *dual* cells. To obtain a scalar, divide `$(string(q))` by the dual cell area `vsphere.Av`"
+TWOFORM(q) = "`$(string(q))` is a *density* (two-form) over *primal* cells. To obtain a scalar, divide `$(string(q))` by the primal cell area `vsphere.Ai`"
 
 COV(q) = "`$(string(q))` is a *covariant* vector field known at edges."
 CONTRA(q) = "`$(string(q))` is a *contravariant* vector field known at edges."
@@ -157,6 +158,30 @@ end
 
 @gen get_divergence(::Val{N}, edges, signs, flux, k) where {N} = quote
     @unroll sum(flux[k, edges[e]] * signs[e] for e = 1:$N)
+end
+
+#========================= divergence (2-form) =======================#
+
+"""
+    vsphere = div_form(vsphere) # $OPTIONAL
+    divf = div_form(vsphere, cell, Val(N))
+    dvg[cell] = divf(flux) # $(SINGLE(:flux))
+    dvg[k, cell] = divf(flux, k)  # $(MULTI(:flux))
+
+Compute divergence $WRT of `flux` at $CELL of $SPH.
+$(CONTRA(:flux))
+$(TWOFORM(:dvg))
+
+$NEDGE
+
+$(INB(:div_form, :divf))
+"""
+@inl div_form(vsphere) = @lhs (; primal_edge, primal_ne) = vsphere
+
+@gen div_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    signs = @unroll (vsphere.primal_ne[e, ij] for e = 1:$N)
+    return Fix(get_divergence, (v, edges, signs))
 end
 
 #========================= curl =====================#
