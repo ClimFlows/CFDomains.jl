@@ -1,7 +1,7 @@
 module VoronoiOperators
 
 using ManagedLoops: @unroll
-import CFDomains.VornoiStencils as Stencils
+import CFDomains.Stencils
 
 abstract type VoronoiOperator{In,Out} end
 
@@ -46,13 +46,13 @@ end
 
 #========== gradient operator and its adjoint ===========#
 
-struct Gradient{Action} <: VoronoiOperator{1,1}
+struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     action::Action # how to combine op(input) with output
     edge_left_right::Matrix{Int32}
     # for the adjoint
     primal_deg::Vector{Int32}
     primal_edge::Matrix{Int32}
-    primal_ne::Matrix{Int32}
+    primal_ne::Matrix{F}
 end
 Gradient(sph, action=ignore) = Gradient(action, sph.edge_left_right, sph.primal_deg, sph.primal_edge, sph.primal_ne)
 
@@ -118,8 +118,8 @@ TRiSK(sph, action=ignore) = TRiSK(action, sph.trisk_deg, sph.trisk, sph.wee)
     for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
-            trsk = Stencils.TRiSK(op, edge, Val(deg))
-            output[edge] = action(output[edge], trsk(input))
+            trisk = Stencils.TRiSK(op, edge, Val(deg))
+            output[edge] = action(output[edge], trisk(input))
         end
     end
     return nothing
@@ -129,8 +129,8 @@ end
     for edge in eachindex(din)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
-            trsk = Stencils.TRiSK(op, edge, Val(deg))
-            din[edge] = adj_action_in(op.action, din[edge], -trsk(dout))
+            trisk = Stencils.TRiSK(op, edge, Val(deg))
+            din[edge] = adj_action_in(op.action, din[edge], -trisk(dout))
         end
     end
 end

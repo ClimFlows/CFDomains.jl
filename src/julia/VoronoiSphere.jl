@@ -18,12 +18,11 @@ struct VoronoiSphere{
     @fields (primal_num, dual_num, edge_num)::Int32
     @fields (primal_deg, dual_deg, trisk_deg)::VI
     @fields (primal_edge, primal_vertex, dual_edge, dual_vertex)::MI
-    @fields (edge_left_right, edge_down_up, trisk, edge_kite)::MI
-    @fields (primal_neighbour, primal_ne, dual_ne)::MI
+    @fields (edge_left_right, edge_down_up, trisk, edge_kite, primal_neighbour)::MI
     @fields (Ai, lon_i, lat_i, Av, lon_v, lat_v)::VR
     @fields (le, de, le_de, lon_e, lat_e, angle_e)::VR
     @fields (primal_bounds_lon, primal_bounds_lat, dual_bounds_lon, dual_bounds_lat)::MR
-    @fields (Riv2, wee, edge_perp)::MR
+    @fields (Riv2, wee, edge_perp, primal_ne, dual_ne)::MR
     primal_perot_cov::AR
     primal_grad3d::MP
     # computed
@@ -39,8 +38,8 @@ Base.show(io::IO, sphere::VoronoiSphere) =
     print(io, "VoronoiSphere($(length(sphere.Ai)) cells, $(length(sphere.Av)) dual cells)")
 
 # converts Floats to Float, leaves other types alone
-@inline convert_float(data, T) = data
-@inline convert_float(data::Integer, T) = data
+# @inline convert_float(data, T) = data
+# @inline convert_float(data::Integer, T) = data
 @inline convert_float(data::AbstractFloat, T) = T(data)
 
 struct StructDict
@@ -53,29 +52,49 @@ Base.getproperty(sd::StructDict, sym::Symbol) = (sym==:dict) ? getfield(sd, sym)
 Base.setproperty!(sd::StructDict, sym::Symbol, val) = setindex!(sd.dict, val, sym)
 
 function VoronoiSphere(read_data::Function; prec = Float32)
-    # These are read from file
-    base_names = (
-        (:primal_num, :dual_num, :edge_num)...,
-        (:primal_deg, :dual_deg, :trisk_deg)...,
-        (:primal_edge, :primal_vertex, :dual_edge, :dual_vertex)...,
-        (:primal_neighbour, :primal_grad3d, :edge_kite, :edge_perp)...,
-        (:edge_left_right, :edge_down_up, :trisk)...,
+    #=
+    @fields (primal_num, dual_num, edge_num)::Int32
+    @fields (primal_deg, dual_deg, trisk_deg)::VI
+    @fields (primal_edge, primal_vertex, dual_edge, dual_vertex)::MI
+    @fields (edge_left_right, edge_down_up, trisk, edge_kite)::MI
+    @fields (primal_neighbour)::MI
+    @fields (Ai, lon_i, lat_i, Av, lon_v, lat_v)::VR
+    @fields (le, de, le_de, lon_e, lat_e, angle_e)::VR
+    @fields (primal_bounds_lon, primal_bounds_lat, dual_bounds_lon, dual_bounds_lat)::MR
+    @fields (Riv2, wee, edge_perp, primal_ne, dual_ne)::MR
+    primal_perot_cov::AR
+    primal_grad3d::MP
+    # computed
+    @fields (xyz_i, elon_i, elat_i)::VP
+    @fields (xyz_e, elon_e, elat_e, normal_e, tangent_e)::VP
+    @fields (xyz_v, elon_v, elat_v)::VP
+    @fields (cen2edge, cen2vertex)::MP
+    =#
+
+    # read Float data from file ; convert to `prec`
+    real_names = (
         (:primal_ne, :dual_ne)...,
         (:Ai, :lon_i, :lat_i, :Av, :lon_v, :lat_v)...,
         (:le, :de, :le_de, :lon_e, :lat_e, :angle_e)...,
         (:primal_bounds_lon, :primal_bounds_lat, :dual_bounds_lon, :dual_bounds_lat)...,
-        (:Riv2, :wee, :primal_perot_cov)...,
+        (:Riv2, :wee, :primal_perot_cov, :edge_perp, :primal_grad3d)...,
     )
-    data = StructDict(name => convert_float.(read_data(name), prec) for name in base_names)
+    data = StructDict(name => prec.(read_data(name)) for name in real_names)
 
-    # Convert sizes to Int32
-    nums = (:primal_num, :dual_num, :edge_num)
-    for name in nums
-        data[name] = Int32(data[name])
+    # read int data from file; convert to Int32
+    int_names = (
+        (:primal_num, :dual_num, :edge_num)...,
+        (:primal_deg, :dual_deg, :trisk_deg)...,
+        (:primal_edge, :primal_vertex, :primal_neighbour, :dual_edge, :dual_vertex)...,
+        (:edge_left_right, :edge_down_up, :trisk, :edge_kite, )...,
+    )
+
+    for name in int_names
+       setproperty!(data, name, Int32.(read_data(name)))
     end
-    nums = Tuple(data[name] for name in nums)
+    nums = (data.primal_num, data.dual_num, data.edge_num)
 
-    # Converts 3D vectors to tuples
+    # Convert 3D vectors to tuples
     vec2tup(x) = [ map(dim->x[i,j,dim], (1,2,3)) for i in axes(x, 1), j in axes(x, 2)]
     data.primal_grad3d = vec2tup(data.primal_grad3d)
 
