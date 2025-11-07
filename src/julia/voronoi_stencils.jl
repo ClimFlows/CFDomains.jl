@@ -224,7 +224,7 @@ Compute gradient of `q` at $EDGE of $SPH.
 $(SCALAR(:q))
 $(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
-$(INB(:gradient, :div))
+$(INB(:gradient, :gradcov))
 """
 @inl gradient(vsphere) = @lhs (; edge_left_right) = vsphere
 
@@ -233,6 +233,27 @@ $(INB(:gradient, :div))
 
 @inl get_gradient(left, right, q) = q[right] - q[left]
 @inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
+
+"""
+    vsphere = grad_form(vsphere) # $OPTIONAL
+    grad = grad_form(vsphere, edge)
+    gradcov[edge] = grad(Q)         # $(SINGLE(:Q))
+    gradcov[k, edge] = grad(Q, k)   # $(MULTI(:Q))
+
+Compute gradient of `Q` at $EDGE of $SPH.
+
+$(TWOFORM(:Q))
+$(COV(:gradcov)) `gradcov` is numerically zero-curl.
+
+$(INB(:grad_form, :gradcov))
+"""
+@inl grad_form(vsphere) = @lhs (; Ai, edge_left_right) = vsphere
+@inl function grad_form(vsphere, ij::Int)
+    Ai, left, right = vsphere.Ai, vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]
+    Fix(get_grad_form, (left, right, inv(Ai[left]), inv(Ai[right])))
+end
+@inl get_grad_form(left, right, Xl, Xr, Q) = Xr*Q[right] - Xl*Q[left]
+@inl get_grad_form(left, right, Xl, Xr, Q, k) = Xr*Q[k, right] - Xl*Q[k, left]
 
 """
     vsphere = gradperp(vsphere) # $OPTIONAL

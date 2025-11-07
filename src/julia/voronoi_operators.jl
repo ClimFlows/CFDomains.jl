@@ -80,7 +80,7 @@ struct Divergence{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     Ai::Vector{F}
     primal_deg::Vector{Int32}
     primal_edge::Matrix{Int32}
-    primal_ne::Matrix{Int32}
+    primal_ne::Matrix{F}
     # for the adjoint
     edge_left_right::Matrix{Int32}
 end
@@ -97,9 +97,9 @@ Divergence(sph, action=ignore) = Divergence(action, sph.Ai, sph.primal_deg, sph.
 end
 
 @inline function apply_adj_internal!(dout, op::Divergence, din)
-    @inbounds for cell in eachindex(din)
+    @inbounds for edge in eachindex(din)
         grad = Stencils.grad_form(op, edge) # gradient of a 2-form
-        din[edge] = adj_action_in(op.action, din[cell], -grad(dout))
+        din[edge] = adj_action_in(op.action, din[edge], -grad(dout))
     end
 end
 
