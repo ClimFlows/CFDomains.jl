@@ -37,11 +37,6 @@ Base.show(io::IO, ::Type{<:VoronoiSphere{F}}) where {F} = print(io, "VoronoiSphe
 Base.show(io::IO, sphere::VoronoiSphere) =
     print(io, "VoronoiSphere($(length(sphere.Ai)) cells, $(length(sphere.Av)) dual cells)")
 
-# converts Floats to Float, leaves other types alone
-# @inline convert_float(data, T) = data
-# @inline convert_float(data::Integer, T) = data
-@inline convert_float(data::AbstractFloat, T) = T(data)
-
 struct StructDict
     dict::Dict{Symbol, Any}
     StructDict(itr) = new(Dict(itr))
@@ -52,25 +47,6 @@ Base.getproperty(sd::StructDict, sym::Symbol) = (sym==:dict) ? getfield(sd, sym)
 Base.setproperty!(sd::StructDict, sym::Symbol, val) = setindex!(sd.dict, val, sym)
 
 function VoronoiSphere(read_data::Function; prec = Float32)
-    #=
-    @fields (primal_num, dual_num, edge_num)::Int32
-    @fields (primal_deg, dual_deg, trisk_deg)::VI
-    @fields (primal_edge, primal_vertex, dual_edge, dual_vertex)::MI
-    @fields (edge_left_right, edge_down_up, trisk, edge_kite)::MI
-    @fields (primal_neighbour)::MI
-    @fields (Ai, lon_i, lat_i, Av, lon_v, lat_v)::VR
-    @fields (le, de, le_de, lon_e, lat_e, angle_e)::VR
-    @fields (primal_bounds_lon, primal_bounds_lat, dual_bounds_lon, dual_bounds_lat)::MR
-    @fields (Riv2, wee, edge_perp, primal_ne, dual_ne)::MR
-    primal_perot_cov::AR
-    primal_grad3d::MP
-    # computed
-    @fields (xyz_i, elon_i, elat_i)::VP
-    @fields (xyz_e, elon_e, elat_e, normal_e, tangent_e)::VP
-    @fields (xyz_v, elon_v, elat_v)::VP
-    @fields (cen2edge, cen2vertex)::MP
-    =#
-
     # read Float data from file ; convert to `prec`
     real_names = (
         (:primal_ne, :dual_ne)...,
