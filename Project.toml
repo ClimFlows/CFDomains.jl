@@ -20,7 +20,7 @@ CFDomainsAdaptExt = ["Adapt"]
 CFDomainsMooncakeExt = ["Mooncake"]
 
 [compat]
-Adapt = "2, 3, 4"
+Adapt = "3, 4"
 ManagedLoops = "0.1.11"
 PackageExtensionCompat = "1"
 SHTnsSpheres = "0.2.4"
