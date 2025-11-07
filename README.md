@@ -13,6 +13,8 @@
 * breaking: `VoronoiSphere` expects additional data from mesh file reader (#11)
 
 * new: 
+  * 0.3.10: experimental Mooncake adjoints for Voronoi-mesh operators (#23)
+  * 0.3.9: Voronoi divergence yielding a two-form (#22)
   * 0.3.7: `zero_array` (#20)
   * 0.3.6: `transpose!` (#19)
   * 0.3.6: new Voronoi stencil for dot products (#19)
