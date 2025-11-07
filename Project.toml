@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.3.9"
+version = "0.3.10"
 
 [deps]
 ManagedLoops = "36a4119d-6b73-4371-88fe-ba2d91f5495d"
@@ -10,12 +10,14 @@ PackageExtensionCompat = "65ce6f38-6b18-4e1d-a461-8949797d7930"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [weakdeps]
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 SHTnsSpheres = "9e5c175a-5132-4517-85a1-2957ec255f89"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 
 [extensions]
 SHTnsSpheres_Ext = ["SHTnsSpheres"]
 CFDomainsAdaptExt = ["Adapt"]
+CFDomainsMooncakeExt = ["Mooncake"]
 
 [compat]
 Adapt = "2, 3, 4"
