@@ -26,6 +26,7 @@ struct VoronoiSphere{
     primal_perot_cov::AR
     primal_grad3d::MP
     # computed
+    inv_Ai::VR
     @fields (xyz_i, elon_i, elat_i)::VP
     @fields (xyz_e, elon_e, elat_e, normal_e, tangent_e)::VP
     @fields (xyz_v, elon_v, elat_v)::VP
@@ -75,6 +76,7 @@ function VoronoiSphere(read_data::Function; prec = Float32)
     data.primal_grad3d = vec2tup(data.primal_grad3d)
 
     # Extra stuff which can be computed without worrying about halos
+    data.inv_Ai = inv.(data.Ai)
     data.xyz_i, data.elon_i, data.elat_i = local_bases(data.lon_i, data.lat_i)
     data.xyz_e, data.elon_e, data.elat_e = local_bases(data.lon_e, data.lat_e)
     data.xyz_v, data.elon_v, data.elat_v = local_bases(data.lon_v, data.lat_v)
