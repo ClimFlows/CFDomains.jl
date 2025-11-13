@@ -12,56 +12,57 @@ abstract type VoronoiOperator{In,Out} end
 struct LazyDiagonalOp{V<:AbstractVector}
     diag::V
 end
-struct LazyDVP{T, V<:AbstractVector{T}} <: AbstractVector{T} 
-    diag::V
+struct WritableDVP{T, D<:AbstractVector, V<:AbstractVector{T}} <: AbstractVector{T}
+    diag::D
     x::V
 end
 
 """
     as_density = AsDensity(vsphere) # a `LazyDiagonalOp`
-    density = as_density(scalar)    # a `LazyDVP` (diagonal-vector-product)
+    density = as_density(scalar)    # a `WritableDVP` (diagonal-vector-product)
     op!(density, ...)               # pass `density as *output* argument
 
-Given a zero-form `scalar`, `as_density` returns the equivalent lazy two-form.
-The latter is a write-only `AbstractArray` to be passed to a VoronoiOperator `op!` 
+Given a zero-form `scalar`, `as_density` returns the equivalent two-form
+as a lazy, write-only `AbstractArray` to be passed to a VoronoiOperator `op!` 
 as an *output* argument.
 """
 AsDensity(vsphere) = LazyDiagonalOp(vsphere.inv_Ai)
-(op::LazyDiagonalOp)(field) = LazyDVP(op.diag, field)
+(op::LazyDiagonalOp)(field) = WritableDVP(op.diag, field)
 
 # x[i] == diag[i] * y[i]
-@prop Base.setindex!(y::LazyDVP, i, y_i) = y.x[i] = diag[i]*y_i
-@prop addto!(y::LazyDVP, i, y_i) = y.x[i] += diag[i]*y_i
-@prop subfrom!(y::LazyDVP, i, y_i) = y.x[i] -= diag[i]*y_i
+Base.eachindex(y::WritableDVP) = eachindex(y.x)
+@prop Base.setindex!(y::WritableDVP, v, i) = y.x[i] = y.diag[i]*v
+@prop addto!(y::WritableDVP, v, i) = y.x[i] += y.diag[i]*v
+@prop subfrom!(y::WritableDVP, v, i) = y.x[i] -= y.diag[i]*v
 
 #================ actions: what to do on the output of operators ================#
 
-@prop set!(out, i, out_i)      = out[i] = out_i
-@prop setminus!(out, i, out_i) = out[i] = -out_i
-@prop addto!(out, i, v)        = out[i] += v
-@prop subfrom!(out, i, v)      = out[i] -= v
-@prop setzero!(out, i, out_i)  = out[i] = 0
-@prop unchanged!(out, i, out_i)  = nothing
+@prop set!(out, v, i)      = out[i] = v
+@prop setminus!(out, v, i) = out[i] = -v
+@prop addto!(out, v, i)    = out[i] += v
+@prop subfrom!(out, v, i)  = out[i] -= v
+@prop setzero!(out, i)     = out[i] = 0
+@prop unchanged!(out, i)   = nothing
 
 # (out, in) := (op(in), in) => (∂out, ∂in) := (0, ∂in + opᵀ(∂out))
-@prop adj_action_in!(::typeof(set!)) = addto!
-@prop adj_action_out!(::typeof(set!)) = setzero!
+adj_action_in(::typeof(set!)) = addto!
+adj_action_out(::typeof(set!)) = setzero!
 
 # (out, in) := (-op(in), in) => (∂out, ∂in) := (0, ∂in - opᵀ(∂out))
-@prop adj_action_in!(::typeof(setminus!)) = subfrom!
-@prop adj_action_out!(::typeof(setminus!)) = setzero!
+adj_action_in(::typeof(setminus!)) = subfrom!
+adj_action_out(::typeof(setminus!)) = setzero!
 
 # (out, in) := (out + op(in), in) => (∂out, ∂in) := (∂out, ∂in + opᵀ(∂out))
-@prop adj_action_in!(::typeof(addto!)) = addto!
-@prop adj_action_out!(::typeof(addto!)) = unchanged!
+adj_action_in(::typeof(addto!)) = addto!
+adj_action_out(::typeof(addto!)) = unchanged!
 
 # (out, in) := (out - op(in), in)  => (∂out, ∂in) := (∂out, ∂in - opᵀ(∂out))
-@prop adj_action_in!(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
-@prop adj_action_out!(::typeof(subfrom!), ∂out, i) = unchanged!
+adj_action_in(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
+adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
 
 #==================== VoronoiOperator{1,1} ==============#
 
-(op::VoronoiOperator{1,1})(input, output) = apply!(output, op, input)
+(op::VoronoiOperator{1,1})(output, input) = apply!(output, op, input)
 
 function apply!(output, stencil::VoronoiOperator{1,1}, input) 
     apply_internal!(output, stencil, input)
@@ -70,8 +71,8 @@ end
 
 function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in) 
     apply_adj_internal!(∂out, op, ∂in)
-    action! = adj_action_out!(op.action!)
-    @inbounds for i in eachindex(∂out)
+    action! = adj_action_out(op.action!)
+    #=@inbounds=# for i in eachindex(∂out)
         action!(∂out, i)
     end
 end
@@ -86,7 +87,7 @@ struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     primal_edge::Matrix{Int32}
     primal_ne::Matrix{F}
 end
-Gradient(sph, action!=set!) = Gradient(action!, sph.edge_left_right, sph.primal_deg, sph.primal_edge, sph.primal_ne)
+Gradient(sph, action! = set!) = Gradient(action!, sph.edge_left_right, sph.primal_deg, sph.primal_edge, sph.primal_ne)
 
 @inline function apply_internal!(output, op::Gradient, input)
     loop_simple(op.action!, op, output, Stencils.gradient, input)
@@ -106,7 +107,7 @@ struct Divergence{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     # for the adjoint
     edge_left_right::Matrix{Int32}
 end
-Divergence(sph, action!=set!) = Divergence(action!, sph.primal_deg, sph.primal_edge, sph.primal_ne, sph.edge_left_right)
+Divergence(sph, action! = set!) = Divergence(action!, sph.primal_deg, sph.primal_edge, sph.primal_ne, sph.edge_left_right)
 
 @inline function apply_internal!(output, op::Divergence, input)
     loop_cell(op.action!, op, output, Stencils.div_form, input)
@@ -124,7 +125,7 @@ struct TRiSK{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     trisk::Matrix{Int32}
     wee::Matrix{F}
 end
-TRiSK(sph, action!=set!) = TRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
+TRiSK(sph, action! = set!) = TRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
 
 @inline function apply_internal!(output, op::TRiSK, input)
     loop_trisk(op.action!, op, output, Stencils.TRiSK, input)
@@ -137,30 +138,30 @@ end
 #============ Loop styles ==========#
 
 @inline function loop_simple(action!, op, output, stencil, input)
-    @inbounds for i in eachindex(output)
+    #=@inbounds=# for i in eachindex(output)
         st = stencil(op, i)
-        action!(output, i, st(input))
+        action!(output, st(input), i)
     end
     return nothing
 end
 
 @inline function loop_cell(action!, op, output, stencil, input)
-    @inbounds for cell in eachindex(output)
+    #=@inbounds=# for cell in eachindex(output)
         deg = op.primal_deg[cell]
         @unroll deg in 5:7 begin
             st = stencil(op, cell, Val(deg))
-            action!(output, cell, st(input))
+            action!(output, st(input), cell)
         end
     end
     return nothing
 end
 
 @inline function loop_trisk(action!, op, output, stencil, input)
-    @inbounds for edge in eachindex(output)
+    #=@inbounds=# for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
-            st = stencil(op, cell, Val(deg))
-            action!(output, edge, st(input))
+            st = stencil(op, edge, Val(deg))
+            action!(output, st(input), edge)
         end
     end
     return nothing
