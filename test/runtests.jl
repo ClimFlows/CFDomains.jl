@@ -21,9 +21,10 @@ import CFDomains.VoronoiOperators as Ops
 
 using Test
 
+include("voronoi_operators.jl")
+
 include("zero_arrays.jl")
 include("voronoi.jl")
-include("voronoi_operators.jl")
 
 nlat = 16
 sph = SHTnsSphere(nlat)
@@ -76,9 +77,11 @@ end
     ucov = randn(choices.precision, length(sphere.lon_e))
     tmp_i = similar(q)
     tmp_e = similar(q, length(sphere.lon_e)) # gradient is computed on edges
+
     test_op(q, tmp_e, Ops.Gradient(sphere))
     test_op(ucov, tmp_e, Ops.TRiSK(sphere))
     test_op(ucov, tmp_i, Ops.Divergence(sphere))
+    test_norm_div(ucov, tmp_i, sphere)
 end
 
 # include("benchmark.jl")

@@ -24,7 +24,7 @@ Modules = [CFDomains.VerticalInterpolation]
 ## Operators on Voronoi mesh
 
 ```@autodocs
-Modules = [CFDomains.Stencils]
+Modules = [CFDomains.Stencils, CFDomains.VoronoiOperators]
 ```
 
 ## Virtual zero-filled arrays
