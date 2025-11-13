@@ -72,7 +72,7 @@ end
 function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in) 
     apply_adj_internal!(∂out, op, ∂in)
     action! = adj_action_out(op.action!)
-    #=@inbounds=# for i in eachindex(∂out)
+    @inbounds for i in eachindex(∂out)
         action!(∂out, i)
     end
 end
@@ -138,7 +138,7 @@ end
 #============ Loop styles ==========#
 
 @inline function loop_simple(action!, op, output, stencil, input)
-    #=@inbounds=# for i in eachindex(output)
+    @inbounds for i in eachindex(output)
         st = stencil(op, i)
         action!(output, st(input), i)
     end
@@ -146,7 +146,7 @@ end
 end
 
 @inline function loop_cell(action!, op, output, stencil, input)
-    #=@inbounds=# for cell in eachindex(output)
+    @inbounds for cell in eachindex(output)
         deg = op.primal_deg[cell]
         @unroll deg in 5:7 begin
             st = stencil(op, cell, Val(deg))
@@ -157,7 +157,7 @@ end
 end
 
 @inline function loop_trisk(action!, op, output, stencil, input)
-    #=@inbounds=# for edge in eachindex(output)
+    @inbounds for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
             st = stencil(op, edge, Val(deg))

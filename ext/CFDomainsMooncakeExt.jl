@@ -54,9 +54,9 @@ struct ReadableCDP{T, V<:AbstractVector{T}} <: AbstractVector{T}
     diag::V
     ∂x::V
 end
-#=@prop=# Base.getindex(∂y::ReadableCDP, i) = ∂y.diag[i]*∂y.∂x[i]
-Base.eachindex(∂y::ReadableCDP) = eachindex(∂y.∂x)
+@prop Base.getindex(∂y::ReadableCDP, i) = ∂y.diag[i]*∂y.∂x[i]
 @prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
+Base.eachindex(∂y::ReadableCDP) = eachindex(∂y.∂x)
 
 Mooncake.tangent_type(::Type{<:WritableDVP{T,D,V}}) where {T,D,V} = ReadableCDP{T, V}
 Mooncake.rdata_type(::Type{<:ReadableCDP}) = NoRData
