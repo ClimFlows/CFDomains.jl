@@ -170,4 +170,17 @@ end
 flip(::typeof(addto!)) = subfrom!
 flip(::typeof(subfrom!)) = addto!
 
+#===================== automatic partial derivatives =================#
+
+"""
+    fa = pdv(fun, a)
+    fa, fb = pdv(fun, a, b)
+    fa, fb, fc = pdv(fun, a, b, c)
+
+Return the partial derivatives of scalar function `fun` evaluated at input `a, ...`.
+*This function is implemented only when the package ForwardDiff is loaded*
+either directly from the main program or via some dependency.
+"""
+function pdv end
+
 end

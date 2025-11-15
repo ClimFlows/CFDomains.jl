@@ -9,7 +9,7 @@ import ForwardDiff
 import DifferentiationInterface as DI
 using DifferentiationInterface: Constant as Const
 
-using LoopManagers: VectorizedCPU, MultiThread
+using LoopManagers: SIMD, VectorizedCPU, MultiThread
 using ManagedLoops: @with, @vec, @unroll
 using SHTnsSpheres: SHTnsSphere
 using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
@@ -21,6 +21,7 @@ import CFDomains.VoronoiOperators as Ops
 
 using Test
 
+include("partial_derivative.jl")
 include("voronoi_operators.jl")
 
 include("zero_arrays.jl")
