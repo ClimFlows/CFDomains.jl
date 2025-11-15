@@ -1,5 +1,5 @@
 function loop_FD1(mgr, fun::Fun, fa, a) where Fun
-    @with mgr let irange = eachindex(fa)
+    @with mgr, let irange = eachindex(fa)
         @vec for i in irange
             fa[i] = Ops.pdv(fun, a[i])
         end
@@ -7,7 +7,7 @@ function loop_FD1(mgr, fun::Fun, fa, a) where Fun
 end
 
 function loop_FD2(mgr, fun2::Fun, fa, fb, a, b) where Fun
-    @with mgr let irange = eachindex(fa,fb)
+    @with mgr, let irange = eachindex(fa,fb)
         @vec for i in irange
             @inbounds fa[i], fb[i] = Ops.pdv(fun2, a[i], b[i])
         end
@@ -15,7 +15,7 @@ function loop_FD2(mgr, fun2::Fun, fa, fb, a, b) where Fun
 end
 
 function loop_FD3(mgr, fun3::Fun, fa, fb, fc, a, b, c) where Fun
-    @with mgr let irange = eachindex(fa,fb,fc)
+    @with mgr, let irange = eachindex(fa,fb,fc)
         @vec for i in irange
             @inbounds fa[i], fb[i], fc[i] = Ops.pdv(fun3, a[i], b[i], c[i])
         end
