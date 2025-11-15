@@ -7,8 +7,8 @@ using SIMD: Vec
 @inline FD.can_dual(::Type{Vec{N, F}}) where {N, F} = FD.can_dual(F)
 
 @inline FD._mul_partial(partial::Vec, x::Vec) = partial * x
-@inline FD._mul_partial(partial::SVec{N,F}, x::F) where {N,F} = partial * x
-@inline FD._mul_partial(partial::F, x::SVec{N,F}) where {N,F} = partial * x
+@inline FD._mul_partial(partial::Vec{N,F}, x::F) where {N,F} = partial * x
+@inline FD._mul_partial(partial::F, x::Vec{N,F}) where {N,F} = partial * x
 
 @inline Base.:*(x::Vec, partials::FD.Partials) = partials*x
 
