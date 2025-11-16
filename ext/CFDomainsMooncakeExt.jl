@@ -31,12 +31,12 @@ function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,1}, finput::CoVec
     output, stencil, input = primal(foutput), primal(op), primal(finput)
     output0 = archive(output)    
     dout, din = tangent(foutput), tangent(finput)
+    extras = apply_internal!(output, stencil, input) # captured to be used by adjoint
     function apply!_pullback!!(::NoRData)
         restore!(output, output0) # undo mutation
-        apply_adj!(dout, stencil, din)
+        apply_adj!(dout, stencil, din, extras)
         return NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
     end
-    apply_internal!(output, stencil, input)
     return zero_fcodual(nothing), apply!_pullback!!
 end
 

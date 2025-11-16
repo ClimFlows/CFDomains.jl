@@ -353,6 +353,41 @@ end
     @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
 end
 
+"""
+    vsphere = squared_covector(vsphere::VoronoiSphere) # $OPTIONAL
+    square = squared_covector(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:ucov))
+    u_squared_form[cell] = square(ucov) 
+
+    # $(MULTI(:ucov))
+    u_squared[k, cell] = square(ucov, k)
+
+Compute dot product $WRT of `ucov` and istelf at $CELL of $SPH. 
+$(COV(:ucov))
+$(TWOFORM(:u_squared))
+
+$NEDGE
+
+$(INB(:squared_covector, :square))
+"""
+@inl squared_covector(vsphere) = @lhs (; primal_edge, le_de) = vsphere
+
+@gen squared_covector(vsphere, ij, v::Val{N}) where {N} = quote
+    # the factor 1/2 for the Perot formula is incorporated into hodges
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    hodges = @unroll (vsphere.le_de[edges[e]]/2 for e = 1:$N)
+    return Fix(get_dot_product, (v, edges, hodges))
+end
+
+@gen get_square(::Val{N}, edges, hodges, ucov) where {N} = quote
+    @unroll sum(hodges[e] * (ucov[edges[e]]^2) for e = 1:$N)
+end
+
+@gen get_square(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
+    @unroll sum(hodges[e] * (ucov[k, edges[e]]^2) for e = 1:$N)
+end
+
 #=============== dot product (contravariant inputs) ===============#
 
 """
