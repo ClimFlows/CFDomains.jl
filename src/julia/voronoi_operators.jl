@@ -65,8 +65,8 @@ adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
 (op::VoronoiOperator{1,1})(output, input) = apply!(output, op, input)
 
 function apply!(output, stencil::VoronoiOperator{1,1}, input) 
-    extras = apply_internal!(output, stencil, input)
-    return extras # will be passed to adjoint
+    apply_internal!(output, stencil, input)
+    return nothing
 end
 
 function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in, extras)
@@ -121,31 +121,32 @@ end
 
 #========== Squared covector and its adjoint ===========#
 
-struct SquaredCovector{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
+struct SquaredCovector{Action, F} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
     primal_deg::Vector{Int32}
     primal_edge::Matrix{Int32}
+    le_de::Vector{F}
     # for the adjoint
     edge_left_right::Matrix{Int32}
 end
-SquaredCovector(sph, action! = set!) = SquaredCovector(action!, sph.primal_deg, sph.primal_edge, sph.edge_left_right)
+SquaredCovector(sph, action! = set!) = SquaredCovector(action!, sph.primal_deg, sph.primal_edge, sph.le_de, sph.edge_left_right)
 
 @inline function apply_internal!(output, op::SquaredCovector, input)
     loop_cell(op.action!, op, output, Stencils.squared_covector, input)
     return input # will be needed by adjoint
 end
 
-@inline function stencil_squared_adj(op, edge)
-    left = op.left_right[1, edge] 
-    right = op.left_right[2, edge] 
-    hodge = op.le_de[edge]/2 # incorporates 1/2 for centered average
-    @inline value(∂K, ucov) = hodge*ucov[edge]*(∂K[left]+∂K[right])
-    @inline value(∂K, ucov, k) = hodge*ucov[k,edge]*(∂K[k, left]+∂K[k, right])
+@inline @inbounds function stencil_squared_adj(op, edge)
+    left = op.edge_left_right[1, edge] 
+    right = op.edge_left_right[2, edge] 
+    hodge = op.le_de[edge]
+    @inline value(∂K, ucov) = @inbounds hodge*ucov[edge]*(∂K[left]+∂K[right])
+    @inline value(∂K, ucov, k) = @inbounds hodge*ucov[k,edge]*(∂K[k, left]+∂K[k, right])
     return value
 end
 
-@inline function apply_adj_internal!(∂out, op::SquaredCovector, ∂in, input)
-    loop_simple(flip(adj_action_in(op.action!)), op, ∂in, stencil_squared_adj, ∂out, input)
+@inline function apply_adj_internal!(∂K, op::SquaredCovector, ∂ucov, ucov)
+    loop_simple(adj_action_in(op.action!), op, ∂ucov, stencil_squared_adj, ∂K, ucov)
 end
 
 #========== TriSK operator and its adjoint ===========#

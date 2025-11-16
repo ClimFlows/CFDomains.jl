@@ -1,6 +1,7 @@
 function norm_op(f, tmp, op, app!)
     app!(tmp, op, f)
-    return LinAlg.norm(tmp)
+#    return LinAlg.norm(tmp)
+    return(sum(tmp))
 end
 
 function dnorm_op(t, f, df, tmp, op, app!) # directional derivative
@@ -15,9 +16,9 @@ function test_op(q, tmp, op)
     grad = DI.gradient(norm_op, prep, backend, q, Const(tmp), Const(op), Const(Ops.apply!));
 
     backendFD, t = DI.AutoForwardDiff(), zero(eltype(q))    
-    grad2 = DI.derivative(dnorm_op, backendFD, t, Const(q), Const(grad), Const(tmp), Const(op), Const(Ops.apply!));
-    @info "check $(typeof(op))" grad2 LinAlg.dot(grad,grad)
-    @test grad2 ≈ LinAlg.dot(grad,grad)
+    gradFD = DI.derivative(dnorm_op, backendFD, t, Const(q), Const(grad), Const(tmp), Const(op), Const(Ops.apply!));
+    @info "check $(typeof(op))" gradFD LinAlg.dot(grad,grad)
+    @test gradFD ≈ LinAlg.dot(grad,grad)
 
     run() = norm_op(q, tmp,op, Ops.apply!)
     display(@benchmark $run())
@@ -48,6 +49,6 @@ function test_norm_div(ucov, tmp, sphere)
     @info "test_norm_div" grad2 LinAlg.dot(grad,grad)
     @test grad2 ≈ LinAlg.dot(grad,grad)
 
-#    run() = norm_op(q, tmp,op, Ops.apply!)
-#    display(@benchmark $run())
+    run() = norm_div(ucov, tmp, Ops.AsDensity(sphere), Ops.Divergence(sphere))
+    display(@benchmark $run())
 end

@@ -377,7 +377,7 @@ $(INB(:squared_covector, :square))
     # the factor 1/2 for the Perot formula is incorporated into hodges
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     hodges = @unroll (vsphere.le_de[edges[e]]/2 for e = 1:$N)
-    return Fix(get_dot_product, (v, edges, hodges))
+    return Fix(get_square, (v, edges, hodges))
 end
 
 @gen get_square(::Val{N}, edges, hodges, ucov) where {N} = quote

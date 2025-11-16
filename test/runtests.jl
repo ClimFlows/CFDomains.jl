@@ -79,6 +79,7 @@ end
     tmp_i = similar(q)
     tmp_e = similar(q, length(sphere.lon_e)) # gradient is computed on edges
 
+    test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
     test_op(q, tmp_e, Ops.Gradient(sphere))
     test_op(ucov, tmp_e, Ops.TRiSK(sphere))
     test_op(ucov, tmp_i, Ops.Divergence(sphere))

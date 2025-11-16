@@ -31,7 +31,7 @@ function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,1}, finput::CoVec
     output, stencil, input = primal(foutput), primal(op), primal(finput)
     output0 = archive(output)    
     dout, din = tangent(foutput), tangent(finput)
-    extras = apply_internal!(output, stencil, input) # captured to be used by adjoint
+    extras = apply_internal!(output, stencil, input) # inputs needed by pullback, if any
     function apply!_pullback!!(::NoRData)
         restore!(output, output0) # undo mutation
         apply_adj!(dout, stencil, din, extras)
@@ -47,7 +47,7 @@ end
 # the tangent `∂y` of `y`. The latter is a ReadableCDP (covector-diagonal product)
 # which reads from the tangent `∂x` of `x`. 
 # For this we need the `rrule!!` for `Diag` to return `∂y` as FData
-# which is then passed to the `rruel!!` for `op`.
+# which is then passed to the `rrule!!` for `op`.
 
 # ∂y[i] == diag[i] * ∂x[i]
 struct ReadableCDP{T, V<:AbstractVector{T}} <: AbstractVector{T}
