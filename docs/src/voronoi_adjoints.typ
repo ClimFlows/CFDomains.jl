@@ -144,6 +144,13 @@
   table.header(
     [*Forward*], [*Backward*],
   ),
+  // Centered flux
+  $ Fvec^e = (h uvec)^e =  1/2 sum_(i in C(e))h_i med l_e/d_e uvec_e $,
+  $ 
+    partial uvec^e = (h partial Fvec)^e = rouge( 1/2 sum_(i in C(e))h_i med l_e/d_e partial Fvec_e ) \
+    partial h^i = (uvec dot partial Fvec)^i = rouge( 1/2 sum_(e in E(i)) l_e/d_e u_e partial Fvec_e ) \
+
+  $,
   // Squared covector
   $ K^i = (uvec dot uvec)^i = 1/2 sum_(e in E(i)) l_e/d_e uvec_e^2 $,
   $ 

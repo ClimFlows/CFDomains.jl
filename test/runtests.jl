@@ -77,8 +77,10 @@ end
     q = randn(choices.precision, length(sphere.lon_i))
     ucov = randn(choices.precision, length(sphere.lon_e))
     tmp_i = similar(q)
-    tmp_e = similar(q, length(sphere.lon_e)) # gradient is computed on edges
+    tmp_e = similar(q, length(sphere.lon_e))
+    tmp_v = similar(q, length(sphere.lon_v))
 
+    test_op(ucov, tmp_v, Ops.Curl(sphere))
     test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
     test_op(q, tmp_e, Ops.Gradient(sphere))
     test_op(ucov, tmp_e, Ops.TRiSK(sphere))

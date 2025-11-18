@@ -1,7 +1,7 @@
 function norm_op(f, tmp, op, app!)
     app!(tmp, op, f)
-#    return LinAlg.norm(tmp)
-    return(sum(tmp))
+    return LinAlg.norm(tmp)
+#    return(sum(tmp))
 end
 
 function dnorm_op(t, f, df, tmp, op, app!) # directional derivative

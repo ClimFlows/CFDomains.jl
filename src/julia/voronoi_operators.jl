@@ -119,6 +119,25 @@ end
     loop_simple(flip(adj_action_in(op.action!)), op, ∂in, Stencils.gradient, ∂out)
 end
 
+#========== curl operator and its adjoint ===========#
+
+struct Curl{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
+    action!::Action # how to combine op(input) with output
+    dual_edge::Matrix{Int32}
+    dual_ne::Matrix{F}
+    edge_down_up::Matrix{Int32} # for gradperp
+end
+Curl(sph, action! = set!) = Curl(action!, sph.dual_edge, sph.dual_ne, sph.edge_down_up)
+
+@inline function apply_internal!(output, op::Curl, input)
+    loop_simple(op.action!, op, output, Stencils.curl, input)
+    return nothing
+end
+
+@inline function apply_adj_internal!(∂out, op::Curl, ∂in, ::Nothing)
+    loop_simple(adj_action_in(op.action!), op, ∂in, Stencils.gradperp, ∂out)
+end
+
 #========== Squared covector and its adjoint ===========#
 
 struct SquaredCovector{Action, F} <: VoronoiOperator{1,1}
@@ -238,7 +257,7 @@ curl! = Curl(sphere) # 1-form -> 2-form
 primal_to_dual! = Average_iv(sphere) # 0-form -> 2-form
 dual_to_edge! = Average_ve(sphere) # 0-form -> 0-form
 substract_trisk! = TriskEnergy(sphere, subfrom!) # (2-form, 0-form at edges) -> 1-form
-as_two_form! = AsTwoForm(sphere)
+as_two_form = AsTwoForm(sphere)
 
 # compute temporaries
 u2 = on_cells(tmp.K)
@@ -258,8 +277,7 @@ dual_to_edge!(mgr, qe, qv)
 ducov, dm = on_edges(dstate.ucov), on_cells(dstate.m)
 minus_grad!(mgr, ducov, B)
 substract_trisk!(mgr, ducov, U, qe)
-dm_form = as_two_form(dm) # present dm as a two-form (write-only)
-minus_div!(mgr, dm_form, U)
+minus_div!(mgr, as_two_form(dm), U)
 
 =#
 
@@ -275,7 +293,6 @@ curl = Curl(sphere) # 1-form -> 2-form
 primal_to_dual = Average_iv(sphere) # 0-form -> 2-form
 dual_to_edge = Average_ve(sphere) # 0-form -> 0-form
 substract_trisk = TriskEnergy(sphere, subfrom!) # (2-form, 0-form at edges) -> 1-form
-as_two_form = AsTwoForm(sphere)  # presents zero-form as a write-only two-form
 
 # constant inputs to lazy arrays must be given names
 metric = model.planet.radius^-2 # constant contravariant metric
@@ -291,21 +308,21 @@ zeta, mv = on_duals(tmp.zeta), on_duals(tmp.mv)
 
 # compute temporaries
 
-@lazy ucontra(ucov) = ucov*metric
+@lazy ucontra(ucov) = metric*ucov
 @lazy m0(m ; inv_Ai) = inv_Ai*m0
-apply!(U, cflux, ucontra, m0)
-apply!(u2, square, ucov)
-apply!(zetav, curl, ucov)
-apply!(mv, primal_to_dual, m)
+cflux!(U, ucontra, m0)
+square!(u2, ucov)
+curl!(zetav, ucov)
+primal_to_dual!(mv, m)
 @lazy qv(zetav, mv ; fcov) = (zeta+fcov)/mv
-apply!(qe, dual_to_edge, qv)
+dual_to_edge!(qe, qv)
 @lazy B(m, u2 ; inv_Ai) = (metric*inv_Ai)*(m + u2/2)
 
 # compute tendencies
 ducov = on_edges(dstate.ucov)
-apply!(ducov, minus_grad, B)
-apply!(ducov, substract_trisk, U, qe)
 dm = on_cells(dstate.m)
-apply!(dm, minus_div, U)
+minus_grad!(ducov, B)
+substract_trisk!(ducov, U, qe)
+minus_div!(dm, U)
 
 =#

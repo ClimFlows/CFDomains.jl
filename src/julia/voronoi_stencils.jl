@@ -201,7 +201,7 @@ $(INB(:curl, :op))
 @inl curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
 
 @inl function curl(vsphere, ij::Int)
-    F = eltype(vsphere.Riv2)
+    F = eltype(vsphere.dual_ne)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
     signs = @unroll (F(vsphere.dual_ne[e, ij]) for e = 1:3)
     return Fix(get_curl, (edges, signs))
