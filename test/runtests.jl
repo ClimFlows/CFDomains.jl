@@ -80,6 +80,7 @@ end
     tmp_e = similar(q, length(sphere.lon_e))
     tmp_v = similar(q, length(sphere.lon_v))
 
+    test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
     test_op(ucov, tmp_v, Ops.Curl(sphere))
     test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
     test_op(q, tmp_e, Ops.Gradient(sphere))

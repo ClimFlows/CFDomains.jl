@@ -354,6 +354,33 @@ end
 end
 
 """
+    vsphere = dot_product_form(vsphere::VoronoiSphere) # $OPTIONAL
+    dot_prod = dot_product_form(vsphere, cell::Int, v::Val{N})
+
+    # $(SINGLE(:ucov, :vcov))
+    dp[cell] = dot_prod(ucov, vcov) 
+
+    # $(MULTI(:ucov, :vcov))
+    dp[k, cell] = dot_prod(ucov, vcov, k)
+
+Compute dot product $WRT of `ucov`, `vcov` at $CELL of $SPH. 
+$(COV(:ucov, :vcov))
+$(TWOFORM(:dp))
+
+$NEDGE
+
+$(INB(:dot_product_form, :dot_prod))
+"""
+@inl dot_product_form(vsphere) = @lhs (; primal_edge, le_de) = vsphere
+
+@gen dot_product_form(vsphere, ij, v::Val{N}) where {N} = quote
+    # the factor 1/2 for the Perot formula is incorporated into hodges
+    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
+    hodges = @unroll (vsphere.le_de[edges[e]]/2 for e = 1:$N)
+    return Fix(get_dot_product, (v, edges, hodges))
+end
+
+"""
     vsphere = squared_covector(vsphere::VoronoiSphere) # $OPTIONAL
     square = squared_covector(vsphere, cell::Int, v::Val{N})
 

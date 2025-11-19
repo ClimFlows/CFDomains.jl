@@ -40,6 +40,20 @@ function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,1}, finput::CoVec
     return zero_fcodual(nothing), apply!_pullback!!
 end
 
+function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,2}, finput1::CoVector{F}, finput2::CoVector{F}) where F
+#    @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput1) typeof(finput2)
+    output, stencil, input1, input2 = primal(foutput), primal(op), primal(finput1), primal(finput2)
+    output0 = archive(output)
+    ∂out, ∂in1,  ∂in2 = tangent(foutput), tangent(finput1), tangent(finput2)
+    extras = apply_internal!(output, stencil, input1, input2) # inputs needed by pullback, if any
+    function apply!_pullback!!(::NoRData)
+        restore!(output, output0) # undo mutation
+        apply_adj!(∂out, stencil, ∂in1, ∂in2, extras)
+        return NoRData(), NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
+    end
+    return zero_fcodual(nothing), apply!_pullback!!
+end
+
 # `y = Diag(x)` where `Diag` is a `LazyDiagonalOp` is a WritableDVP
 # (diagonal-vector-product), a write-only AbstractArray
 # to be passed to a VoronoiOperator `op` as an output argument.

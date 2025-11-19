@@ -35,7 +35,7 @@ Base.eachindex(y::WritableDVP) = eachindex(y.x)
 @prop addto!(y::WritableDVP, v, i) = y.x[i] += y.diag[i]*v
 @prop subfrom!(y::WritableDVP, v, i) = y.x[i] -= y.diag[i]*v
 
-#================ actions: what to do on the output of operators ================#
+#========== actions: what to do on the output of operators ===========#
 
 @prop set!(out, v, i)      = out[i] = v
 @prop setminus!(out, v, i) = out[i] = -v
@@ -60,7 +60,9 @@ adj_action_out(::typeof(addto!)) = unchanged!
 adj_action_in(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
 adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
 
-#==================== VoronoiOperator{1,1} ==============#
+#================================================================#
+#===================== VoronoiOperator{1,1} =====================#
+#================================================================#
 
 (op::VoronoiOperator{1,1})(output, input) = apply!(output, op, input)
 
@@ -77,7 +79,7 @@ function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in, extras)
     end
 end
 
-#========== gradient operator and its adjoint ===========#
+#========== gradient ===========#
 
 struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
@@ -98,7 +100,7 @@ end
     loop_cell(flip(adj_action_in(op.action!)), op, ∂in, Stencils.div_form, ∂out)
 end
 
-#========== divergence operator and its adjoint ===========#
+#========== divergence ===========#
 
 struct Divergence{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
@@ -119,7 +121,7 @@ end
     loop_simple(flip(adj_action_in(op.action!)), op, ∂in, Stencils.gradient, ∂out)
 end
 
-#========== curl operator and its adjoint ===========#
+#========== curl ===========#
 
 struct Curl{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
@@ -138,7 +140,7 @@ end
     loop_simple(adj_action_in(op.action!), op, ∂in, Stencils.gradperp, ∂out)
 end
 
-#========== Squared covector and its adjoint ===========#
+#========== Squared covector ===========#
 
 struct SquaredCovector{Action, F} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
@@ -168,7 +170,7 @@ end
     loop_simple(adj_action_in(op.action!), op, ∂ucov, stencil_squared_adj, ∂K, ucov)
 end
 
-#========== TriSK operator and its adjoint ===========#
+#========== TriSK ===========#
 
 struct TRiSK{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     action!::Action # how to combine op(input) with output
@@ -187,7 +189,50 @@ end
     loop_trisk(flip(adj_action_in(op.action!)), op, ∂in, Stencils.TRiSK, ∂out)
 end
 
-#============ Loop styles ==========#
+#================================================================#
+#===================== VoronoiOperator{1,2} =====================#
+#================================================================#
+
+(op::VoronoiOperator{1,2})(output, in1, in2) = apply!(output, op, in1, in2)
+
+function apply!(output, stencil::VoronoiOperator{1,2}, in1, in2) 
+    apply_internal!(output, stencil, in1, in2)
+    return nothing
+end
+
+function apply_adj!(∂out, op::VoronoiOperator{1,2}, ∂in1, ∂in2, extras)
+    apply_adj_internal!(∂out, op, ∂in1, ∂in2, extras)
+    action! = adj_action_out(op.action!)
+    @inbounds for i in eachindex(∂out)
+        action!(∂out, i)
+    end
+end
+
+#========== Centered flux ===========#
+
+struct CenteredFlux{Action, F} <: VoronoiOperator{1,2}
+    action!::Action # how to combine op(input) with output
+    le_de::Vector{F}
+    edge_left_right::Matrix{Int32}
+    # for adjoint
+    primal_deg::Vector{Int32}
+    primal_edge::Matrix{Int32}
+end
+CenteredFlux(sph, action! = set!) = CenteredFlux(action!, sph.le_de, sph.edge_left_right, sph.primal_deg, sph.primal_edge)
+
+@inline function apply_internal!(output, op::CenteredFlux, m, ucov)
+    loop_simple(op.action!, op, output, Stencils.centered_flux, m, ucov)
+    return m, ucov # needed by adjoint
+end
+
+@inline function apply_adj_internal!(∂F, op::CenteredFlux, ∂m, ∂ucov, (m, ucov))
+    loop_cell(adj_action_in(op.action!), op, ∂m, Stencils.dot_product_form, ucov, ∂F)
+    loop_simple(adj_action_in(op.action!), op, ∂ucov, Stencils.centered_flux, m, ∂F)
+end
+
+#=======================================================#
+#===================== Loop styles =====================#
+#=======================================================#
 
 @inline function loop_simple(action!, op, output, stencil, inputs...)
     @inbounds for i in eachindex(output)
