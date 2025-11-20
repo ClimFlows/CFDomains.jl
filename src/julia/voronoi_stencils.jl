@@ -84,7 +84,7 @@ $(INB(:average_ie, :avg))
     qv[dual_cell] = avg(qi)         # $(SINGLE(:qi))
     qv[k, dual_cell] = avg(qi, k)   # $(MULTI(:qi))
 
-Interpolate scalar field at $DUAL of $SPH by an area-weighted average (first-order accurate).
+Estimate scalar field integrated over $DUAL of $SPH as an area-weighted sum of values sampled at primal cell centers.
 
 $(SCALAR(:qi))
 $(DUALSCALAR(:qv))
@@ -106,6 +106,27 @@ end
     @unroll sum(weights[e] * mass[k, cells[e]] for e = 1:3)
 
 """
+    vsphere = average_iv_form(vsphere) # $OPTIONAL
+    avg = average_iv_form(vsphere, dual_cell)
+    qv[dual_cell] = avg(qi)         # $(SINGLE(:qi))
+    qv[k, dual_cell] = avg(qi, k)   # $(MULTI(:qi))
+
+Interpolate scalar field at $DUAL of $SPH by an area-weighted sum (first-order accurate).
+
+$(SCALAR(:qi))
+$(DUAL2FORM(:qv))
+
+$(INB(:average_iv_form, :avg))
+"""
+@inl average_iv_form(vsphere) = @lhs (; dual_vertex, Aiv) = vsphere
+
+@inl function average_iv_form(vsphere, ij::Int)
+    cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
+    weights = @unroll (vsphere.Avi[e, ij] for e = 1:3)
+    return Fix(get_average_iv, (cells, weights))
+end
+
+"""
     vsphere = average_ve(vsphere) # $OPTIONAL
     avg = average_ve(vsphere, edge)
     qe[edge] = avg(qv)         # $(SINGLE(:qv))
@@ -125,6 +146,28 @@ $(INB(:average_ve, :avg))
 @inl get_average_ve(up, down, qv) = (qv[down] + qv[up]) / 2
 
 @inl get_average_ve(up, down, qv, k) = (qv[k, down] + qv[k, up]) / 2
+
+"""
+    vsphere = average_vi_form(vsphere) # $OPTIONAL
+    avg = avg_vi_form(vsphere, cell, Val(N))
+    qi[cell] = avg(qv) # $(SINGLE(:qv))
+    qi[k, cell] = avg(qv, k)  # $(MULTI(:qv))
+
+Estimate scalar field integrated over $CELL of $SPH as an area-weighted sum of values sampled at vertices.
+$(DUALSCALAR(:qv))
+$(TWOFORM(:qi))
+
+$NEDGE
+
+$(INB(:average_vi_form, :avg))
+"""
+@inl average_vi_form(vsphere) = @lhs (; Avi, primal_vertex, primal_ne) = vsphere
+
+@gen average_vi_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
+    vertices = @unroll (vsphere.primal_vertex[v, ij] for v = 1:$N)
+    weights = @unroll (vsphere.Aiv[v, ij] for v = 1:$N)
+    return Fix(get_divergence, (v, vertices, weights))
+end
 
 #========================= divergence =======================#
 

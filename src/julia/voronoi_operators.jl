@@ -79,6 +79,28 @@ function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in, extras)
     end
 end
 
+#========== primal => dual ==========#
+
+struct DualFromPrimal{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
+    action!::Action # how to combine op(input) with output
+    dual_vertex::Matrix{Int32}
+    Avi::Matrix{F}
+    # for the adjoint
+    primal_deg::Vector{Int32}
+    primal_vertex::Matrix{Int32}
+    Aiv::Matrix{F}
+end
+DualFromPrimal(sph, action! = set!) = DualFromPrimal(action!, sph.dual_vertex, sph.Avi, sph.primal_deg, sph.primal_vertex, sph.Aiv)
+
+@inline function apply_internal!(output, op::DualFromPrimal, input)
+    loop_simple(op.action!, op, output, Stencils.average_iv_form, input)
+    return nothing
+end
+
+@inline function apply_adj_internal!(∂out, op::DualFromPrimal, ∂in, ::Nothing)
+    loop_cell(adj_action_in(op.action!), op, ∂in, Stencils.average_vi_form, ∂out)
+end
+
 #========== gradient ===========#
 
 struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
@@ -140,6 +162,25 @@ end
     loop_simple(adj_action_in(op.action!), op, ∂in, Stencils.gradperp, ∂out)
 end
 
+#========== TriSK ===========#
+
+struct TRiSK{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
+    action!::Action # how to combine op(input) with output
+    trisk_deg::Vector{Int32}
+    trisk::Matrix{Int32}
+    wee::Matrix{F}
+end
+TRiSK(sph, action! = set!) = TRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
+
+@inline function apply_internal!(output, op::TRiSK, input)
+    loop_trisk(op.action!, op, output, Stencils.TRiSK, input)
+    return nothing
+end
+
+@inline function apply_adj_internal!(∂out, op::TRiSK, ∂in, ::Nothing)
+    loop_trisk(flip(adj_action_in(op.action!)), op, ∂in, Stencils.TRiSK, ∂out)
+end
+
 #========== Squared covector ===========#
 
 struct SquaredCovector{Action, F} <: VoronoiOperator{1,1}
@@ -168,25 +209,6 @@ end
 
 @inline function apply_adj_internal!(∂K, op::SquaredCovector, ∂ucov, ucov)
     loop_simple(adj_action_in(op.action!), op, ∂ucov, stencil_squared_adj, ∂K, ucov)
-end
-
-#========== TriSK ===========#
-
-struct TRiSK{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
-    action!::Action # how to combine op(input) with output
-    trisk_deg::Vector{Int32}
-    trisk::Matrix{Int32}
-    wee::Matrix{F}
-end
-TRiSK(sph, action! = set!) = TRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
-
-@inline function apply_internal!(output, op::TRiSK, input)
-    loop_trisk(op.action!, op, output, Stencils.TRiSK, input)
-    return nothing
-end
-
-@inline function apply_adj_internal!(∂out, op::TRiSK, ∂in, ::Nothing)
-    loop_trisk(flip(adj_action_in(op.action!)), op, ∂in, Stencils.TRiSK, ∂out)
 end
 
 #================================================================#

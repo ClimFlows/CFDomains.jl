@@ -80,12 +80,17 @@ end
     tmp_e = similar(q, length(sphere.lon_e))
     tmp_v = similar(q, length(sphere.lon_v))
 
-    test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
+    # Linear VoronoiOperator{1,1}
+    test_op(q, tmp_v, Ops.DualFromPrimal(sphere))
     test_op(ucov, tmp_v, Ops.Curl(sphere))
-    test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
     test_op(q, tmp_e, Ops.Gradient(sphere))
-    test_op(ucov, tmp_e, Ops.TRiSK(sphere))
     test_op(ucov, tmp_i, Ops.Divergence(sphere))
+    test_op(ucov, tmp_e, Ops.TRiSK(sphere))
+    # Quadratic VoronoiOperator{1,1}
+    test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
+    # Bilinear VoronoiOperator{1,2}
+    test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
+    # LazyDiagonalOp
     test_norm_div(ucov, tmp_i, sphere)
 end
 
