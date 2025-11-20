@@ -56,6 +56,17 @@ struct Fix{Fun,Coefs}
 end
 @inl (st::Fix)(args...) = st.fun(st.coefs..., args...)
 
+# The general structure is as follows:
+# 1- Extract only those fields that are relevant for the stencil
+#       sph = <stencil>(sph)
+#    Returns a named tuple.
+# 2- Extract mesh data for a given mesh element ij (cell, edge, dual)
+#       op = <stencil>(sph, ij, [::Val{N}]) . 
+#    N is the "degree" = number of connected mesh elements, if not known in advance.
+#    op is of the form Fix(expr, data...) which is a callable object 
+#    such that op(args...) = expr(data..., args...)
+# 3- `expr` evaluates the stencil expression, e.g. `sum_weighted`, ...
+
 #======================== averaging =======================#
 
 """
@@ -73,10 +84,7 @@ $(INB(:average_ie, :avg))
 """
 @inl average_ie(vsphere) = @lhs (; edge_left_right) = vsphere
 @inl average_ie(vsphere, ij) =
-    Fix(get_average_ie, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
-
-@inl get_average_ie(left, right, mass) = (mass[left] + mass[right]) / 2
-@inl get_average_ie(left, right, mass, k) = (mass[k, left] + mass[k, right]) / 2
+    Fix(get_average, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
 """
     vsphere = average_iv(vsphere) # $OPTIONAL
@@ -96,14 +104,8 @@ $(INB(:average_iv, :avg))
 @inl function average_iv(vsphere, ij::Int)
     cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
     weights = @unroll (vsphere.Riv2[e, ij] for e = 1:3)
-    return Fix(get_average_iv, (cells, weights))
+    return Fix(sum_weighted, (cells, weights))
 end
-
-@inl get_average_iv(cells, weights, mass) =
-    @unroll sum(weights[e] * mass[cells[e]] for e = 1:3)
-
-@inl get_average_iv(cells, weights, mass, k) =
-    @unroll sum(weights[e] * mass[k, cells[e]] for e = 1:3)
 
 """
     vsphere = average_iv_form(vsphere) # $OPTIONAL
@@ -123,7 +125,7 @@ $(INB(:average_iv_form, :avg))
 @inl function average_iv_form(vsphere, ij::Int)
     cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
     weights = @unroll (vsphere.Avi[e, ij] for e = 1:3)
-    return Fix(get_average_iv, (cells, weights))
+    return Fix(sum_weighted, (cells, weights))
 end
 
 """
@@ -141,11 +143,7 @@ $(INB(:average_ve, :avg))
 """
 @inl average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
 @inl average_ve(vsphere, ij::Int) =
-    Fix(get_average_ve, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
-
-@inl get_average_ve(up, down, qv) = (qv[down] + qv[up]) / 2
-
-@inl get_average_ve(up, down, qv, k) = (qv[k, down] + qv[k, up]) / 2
+    Fix(get_average, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
 """
     vsphere = average_vi_form(vsphere) # $OPTIONAL
@@ -166,7 +164,7 @@ $(INB(:average_vi_form, :avg))
 @gen average_vi_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
     vertices = @unroll (vsphere.primal_vertex[v, ij] for v = 1:$N)
     weights = @unroll (vsphere.Aiv[v, ij] for v = 1:$N)
-    return Fix(get_divergence, (v, vertices, weights))
+    return Fix(sum_weighted, (vertices, weights))
 end
 
 #========================= divergence =======================#
@@ -187,20 +185,12 @@ $(INB(:divergence, :div))
 """
 @inl divergence(vsphere) = @lhs (; Ai, primal_edge, primal_ne) = vsphere
 
-@gen divergence(vsphere, ij::Int, v::Val{N}) where {N} = quote
+@gen divergence(vsphere, ij::Int, v::Val{N}) where N = quote
     # signs include the inv_area factor
     inv_area = inv(vsphere.Ai[ij])
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     signs = @unroll (inv_area * vsphere.primal_ne[e, ij] for e = 1:$N)
-    return Fix(get_divergence, (v, edges, signs))
-end
-
-@gen get_divergence(::Val{N}, edges, signs, flux) where {N} = quote
-    @unroll sum(flux[edges[e]] * signs[e] for e = 1:$N)
-end
-
-@gen get_divergence(::Val{N}, edges, signs, flux, k) where {N} = quote
-    @unroll sum(flux[k, edges[e]] * signs[e] for e = 1:$N)
+    return Fix(sum_weighted, (edges, signs))
 end
 
 #========================= divergence (2-form) =======================#
@@ -224,7 +214,7 @@ $(INB(:div_form, :divf))
 @gen div_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     signs = @unroll (vsphere.primal_ne[e, ij] for e = 1:$N)
-    return Fix(get_divergence, (v, edges, signs))
+    return Fix(sum_weighted, (edges, signs))
 end
 
 #========================= curl =====================#
@@ -247,12 +237,8 @@ $(INB(:curl, :op))
     F = eltype(vsphere.dual_ne)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
     signs = @unroll (F(vsphere.dual_ne[e, ij]) for e = 1:3)
-    return Fix(get_curl, (edges, signs))
+    return Fix(sum_weighted, (edges, signs))
 end
-
-@inl get_curl(edges, signs, ucov) = @unroll sum(ucov[edges[e]] * signs[e] for e = 1:3)
-
-@inl get_curl(edges, signs, ucov, k) = @unroll sum(ucov[k, edges[e]] * signs[e] for e = 1:3)
 
 #========================= gradient =====================#
 
@@ -315,7 +301,6 @@ $(INB(:gradperp, :grad))
 @inl gradperp(vsphere, ij::Int) =
     Fix(get_gradient, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
-
 """
     vsphere = gradient3d(vsphere) # $OPTIONAL
     grad = gradient3d(vsphere, cell, Val(N))
@@ -346,18 +331,6 @@ end
     @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
 end
 
-# Kept for testing
-@gen gradient3d(vsphere, layout, cell, dim, v::Val{deg}) where {deg} = quote
-    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
-    grads = @unroll (vsphere.primal_grad3d[edge, cell][dim] for edge = 1:$deg)
-    return Fix(get_gradient3d, (layout, v, cell, neighbours, grads))
-end
-@gen get_gradient3d(::HVLayout{1}, ::Val{deg}, cell, neighbours, grads, q, k) where {deg} =
-    quote
-        dq = @unroll (q[neighbours[edge], k] - q[cell, k] for edge = 1:$deg)
-        @unroll sum(dq[edge] * grads[edge] for edge = 1:$deg)
-    end
-
 #================= dot product (covariant inputs) =================#
 
 """
@@ -385,15 +358,7 @@ $(INB(:dot_product, :dot_prod))
     inv_area = inv(2 * vsphere.Ai[ij])
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     hodges = @unroll (inv_area * vsphere.le_de[edges[e]] for e = 1:$N)
-    return Fix(get_dot_product, (v, edges, hodges))
-end
-
-@gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov) where {N} = quote
-    @unroll sum(hodges[e] * (ucov[edges[e]] * vcov[edges[e]]) for e = 1:$N)
-end
-
-@gen get_dot_product(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
-    @unroll sum(hodges[e] * (ucov[k, edges[e]] * vcov[k, edges[e]]) for e = 1:$N)
+    return Fix(sum_bilinear, (edges, hodges))
 end
 
 """
@@ -420,7 +385,7 @@ $(INB(:dot_product_form, :dot_prod))
     # the factor 1/2 for the Perot formula is incorporated into hodges
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     hodges = @unroll (vsphere.le_de[edges[e]]/2 for e = 1:$N)
-    return Fix(get_dot_product, (v, edges, hodges))
+    return Fix(sum_bilinear, (edges, hodges))
 end
 
 """
@@ -447,15 +412,7 @@ $(INB(:squared_covector, :square))
     # the factor 1/2 for the Perot formula is incorporated into hodges
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     hodges = @unroll (vsphere.le_de[edges[e]]/2 for e = 1:$N)
-    return Fix(get_square, (v, edges, hodges))
-end
-
-@gen get_square(::Val{N}, edges, hodges, ucov) where {N} = quote
-    @unroll sum(hodges[e] * (ucov[edges[e]]^2) for e = 1:$N)
-end
-
-@gen get_square(::Val{N}, edges, hodges, ucov, vcov, k) where {N} = quote
-    @unroll sum(hodges[e] * (ucov[k, edges[e]]^2) for e = 1:$N)
+    return Fix(sum_square, (edges, hodges))
 end
 
 #=============== dot product (contravariant inputs) ===============#
@@ -479,12 +436,12 @@ $(INB(:dot_prod_contra, :dot_prod))
 """
 @inl dot_prod_contra(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
 
-@gen dot_prod_contra(vsphere, ij, v::Val{N}) where {N} = quote
+@gen dot_prod_contra(vsphere, ij, ::Val{N}) where {N} = quote
     # inv(2*area) is incorporated into hodges
     dbl_area = 2 * vsphere.Ai[ij]
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     hodges = @unroll (inv(dbl_area * vsphere.le_de[edges[e]]) for e = 1:$N)
-    return Fix(get_dot_product, (v, edges, hodges))
+    return Fix(sum_bilinear, (edges, hodges))
 end
 
 #======================= contraction ======================#
@@ -586,41 +543,11 @@ $(INB(:TRiSK, :trisk))
 """
 @inl TRiSK(vsphere) = @lhs (; trisk, wee) = vsphere
 
-@gen TRiSK(vsphere, ij::Int, v::Val{N}) where {N} = quote
+@gen TRiSK(vsphere, ij::Int, ::Val{N}) where {N} = quote
     trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
     wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)
-    Fix(get_TRiSK1, (ij, v, trisk, wee))
+    Fix(sum_TRiSK1, (ij, trisk, wee))
 end
-
-# single-layer, linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U) where {N} = quote
-    @unroll sum((weight[e] * U[edge[e]]) for e = 1:$N)
-end
-
-# multi-layer, linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, k) where {N} = quote
-    @unroll sum((weight[e] * U[k, edge[e]]) for e = 1:$N)
-end
-
-# single-layer, non-linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe::AbstractVector) where {N} = quote
-    @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
-end
-
-# multi-layer, non-linear
-@gen get_TRiSK1(ij, ::Val{N}, edge, weight, U, qe, k) where {N} = quote
-    @unroll sum((weight[e] * U[k, edge[e]]) * (qe[k, ij] + qe[k, edge[e]]) for e = 1:$N) / 2
-end
-
-# this implementation is less efficient but kept for benchmarking
-# weight includes the factor 1/2 of the centered average of qe
-@inl TRiSK(vsphere, ij::Int, edge::Int) =
-    Fix(get_TRiSK2, (ij, vsphere.trisk[edge, ij], vsphere.wee[edge, ij] / 2))
-
-# multi-layer, nonlinear
-@inl get_TRiSK2(ij, edge, weight, du, U, qe, k) =
-    muladd(weight * U[k, edge], qe[k, ij] + qe[k, edge], du[k, ij])
-
 
 #=========================== perp ======================#
 
@@ -642,24 +569,62 @@ $(INB(:perp, :op))
 """
 @inl perp(vsphere) = @lhs (; edge_kite, edge_perp) = vsphere
 
-@inl perp(vsphere, edge) = perp(vsphere, VHLayout{1}(), edge)
+@inl function perp(vsphere, edge) 
+    edges = @unroll (vsphere.edge_kite[ind, edge] for ind = 1:4)
+    coefs = @unroll (vsphere.edge_perp[ind, edge] for ind = 1:4)
+    return Fix(sum_weighted, (edges, coefs))
+end
 
-# The layout arg is kept only for testing since HVLayout is inefficient
-@inl perp(vsphere, layout, edge) = @unroll Fix(
-    get_perp,
-    (
-        layout,
-        (vsphere.edge_kite[ind, edge] for ind = 1:4),
-        (vsphere.edge_perp[ind, edge] for ind = 1:4),
-    ),
-)
+#========================== sums ==========================#
 
-@inl get_perp(_, kite, wperp, un) = @unroll sum(un[kite[ind]] * wperp[ind] for ind = 1:4)
-@inl get_perp(_, kite, wperp, un, k) =
-    @unroll sum(un[k, kite[ind]] * wperp[ind] for ind = 1:4)
+const Ints{N} = NTuple{N, Int32}
 
-@inl get_perp(::HVLayout{1}, kite, wperp, un, k) =
-    @unroll sum(un[kite[ind], k] * wperp[ind] for ind = 1:4)
+@gen sum_weighted(cells::Ints{N}, weights, a) where N = quote
+    @unroll sum(weights[e] * a[cells[e]] for e = 1:$N)
+end
+
+@gen sum_weighted(cells::Ints{N}, weights, a, k) where N = quote
+    @unroll sum(weights[e] * a[k, cells[e]] for e = 1:$N)
+end
+
+@gen sum_square(edges::Ints{N}, hodges, a) where {N} = quote
+    @unroll sum(hodges[e] * (a[edges[e]]^2) for e = 1:$N)
+end
+
+@gen sum_square(edges::Ints{N}, hodges, a, k) where {N} = quote
+    @unroll sum(hodges[e] * (a[k, edges[e]]^2) for e = 1:$N)
+end
+
+@gen sum_bilinear(cells::Ints{N}, weights, a,b) where N = quote
+    @unroll sum(weights[e] * a[cells[e]]*b[cells[e]] for e = 1:$N)
+end
+
+@gen sum_bilinear(cells::Ints{N}, weights, a, b, k) where N = quote
+    @unroll sum(weights[e] * a[k, cells[e]]*b[k, cells[e]] for e = 1:$N)
+end
+
+# single-layer, linear
+@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U) where {N} = quote
+    @unroll sum((weight[e] * U[edge[e]]) for e = 1:$N)
+end
+
+# multi-layer, linear
+@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, k) where {N} = quote
+    @unroll sum((weight[e] * U[k, edge[e]]) for e = 1:$N)
+end
+
+# single-layer, non-linear
+@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe::AbstractVector) where {N} = quote
+    @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
+end
+
+# multi-layer, non-linear
+@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe, k) where {N} = quote
+    @unroll sum((weight[e] * U[k, edge[e]]) * (qe[k, ij] + qe[k, edge[e]]) for e = 1:$N) / 2
+end
+
+@inl get_average(left, right, a) = (a[left] + a[right]) / 2
+@inl get_average(left, right, a, k) = (a[k, left] + a[k, right]) / 2
 
 #===================== helpers hiding @unroll ====================#
 
