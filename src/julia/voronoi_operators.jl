@@ -7,6 +7,12 @@ import CFDomains.Stencils
 
 abstract type VoronoiOperator{In,Out} end
 
+@inline function (T::Type{<:VoronoiOperator})(sph, action! = set!)
+    _, names... = fieldnames(T)
+    fields = map(name->getproperty(sph, name), names)
+    return T(action!, fields...)
+end
+
 #================== lazy diagonal operator ===============#
 
 struct LazyDiagonalOp{V<:AbstractVector}
@@ -90,7 +96,6 @@ struct DualFromPrimal{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     primal_vertex::Matrix{Int32}
     Aiv::Matrix{F}
 end
-DualFromPrimal(sph, action! = set!) = DualFromPrimal(action!, sph.dual_vertex, sph.Avi, sph.primal_deg, sph.primal_vertex, sph.Aiv)
 
 @inline function apply_internal!(output, op::DualFromPrimal, input)
     loop_simple(op.action!, op, output, Stencils.average_iv_form, input)
@@ -111,7 +116,6 @@ struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     primal_edge::Matrix{Int32}
     primal_ne::Matrix{F}
 end
-Gradient(sph, action! = set!) = Gradient(action!, sph.edge_left_right, sph.primal_deg, sph.primal_edge, sph.primal_ne)
 
 @inline function apply_internal!(output, op::Gradient, input)
     loop_simple(op.action!, op, output, Stencils.gradient, input)
@@ -132,7 +136,6 @@ struct Divergence{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     # for the adjoint
     edge_left_right::Matrix{Int32}
 end
-Divergence(sph, action! = set!) = Divergence(action!, sph.primal_deg, sph.primal_edge, sph.primal_ne, sph.edge_left_right)
 
 @inline function apply_internal!(output, op::Divergence, input)
     loop_cell(op.action!, op, output, Stencils.div_form, input)
@@ -151,7 +154,6 @@ struct Curl{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     dual_ne::Matrix{F}
     edge_down_up::Matrix{Int32} # for gradperp
 end
-Curl(sph, action! = set!) = Curl(action!, sph.dual_edge, sph.dual_ne, sph.edge_down_up)
 
 @inline function apply_internal!(output, op::Curl, input)
     loop_simple(op.action!, op, output, Stencils.curl, input)
@@ -170,7 +172,6 @@ struct TRiSK{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     trisk::Matrix{Int32}
     wee::Matrix{F}
 end
-TRiSK(sph, action! = set!) = TRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
 
 @inline function apply_internal!(output, op::TRiSK, input)
     loop_trisk(op.action!, op, output, Stencils.TRiSK, input)
@@ -191,7 +192,6 @@ struct SquaredCovector{Action, F} <: VoronoiOperator{1,1}
     # for the adjoint
     edge_left_right::Matrix{Int32}
 end
-SquaredCovector(sph, action! = set!) = SquaredCovector(action!, sph.primal_deg, sph.primal_edge, sph.le_de, sph.edge_left_right)
 
 @inline function apply_internal!(output, op::SquaredCovector, input)
     loop_cell(op.action!, op, output, Stencils.squared_covector, input)
@@ -240,7 +240,6 @@ struct CenteredFlux{Action, F} <: VoronoiOperator{1,2}
     primal_deg::Vector{Int32}
     primal_edge::Matrix{Int32}
 end
-CenteredFlux(sph, action! = set!) = CenteredFlux(action!, sph.le_de, sph.edge_left_right, sph.primal_deg, sph.primal_edge)
 
 @inline function apply_internal!(output, op::CenteredFlux, m, ucov)
     loop_simple(op.action!, op, output, Stencils.centered_flux, m, ucov)
@@ -260,7 +259,6 @@ struct EnergyTRiSK{Action, F} <: VoronoiOperator{1,2}
     trisk::Matrix{Int32}
     wee::Matrix{F}
 end
-EnergyTRiSK(sph, action! = set!) = EnergyTRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
 
 @inline function apply_internal!(ucov, op::EnergyTRiSK, U, q)
     loop_trisk(op.action!, op, ucov, Stencils.TRiSK, U, q)
@@ -273,6 +271,27 @@ end
 end
 
 #========== Centered flux divergence ===========#
+
+struct DivCenteredFlux{Action, F<:AbstractFloat} <: VoronoiOperator{1,2}
+    action!::Action # how to combine op(input) with output
+    primal_deg::Vector{Int32}
+    primal_edge::Matrix{Int32}
+    primal_neighbour::Matrix{Int32}
+    primal_ne::Matrix{F}
+    # for the adjoint
+    edge_left_right::Matrix{Int32}
+end
+
+@inline function apply_internal!(divqF, op::DivCenteredFlux, q, F)
+    loop_cell(op.action!, op, divqF, Stencils.div_centered_flux, q, F)
+    return q, F
+end
+
+@inline function apply_adj_internal!(∂divqF, op::DivCenteredFlux, ∂q, ∂F, (q, F))
+    action! = flip(adj_action_in(op.action!))
+    loop_simple(action!, op, ∂F, Stencils.mul_grad, q, ∂divqF)
+    loop_cell(action!, op, ∂q, Stencils.dot_grad, F, ∂divqF)
+end
 
 #=======================================================#
 #===================== Loop styles =====================#

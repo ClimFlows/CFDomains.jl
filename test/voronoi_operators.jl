@@ -61,13 +61,13 @@ function test_op(a, b, tmp, op)
     @info "check $(typeof(op))" grad2 LinAlg.dot(grad,grad)
     @test grad2 ≈ LinAlg.dot(grad,grad)
 
-    run() = norm_op(a, b, tmp, op, Ops.apply!)
-    display(@benchmark $run())
-
     grad = MC_gradient(norm_op_switch, b, a, tmp, op, Ops.apply!);
     grad2 = FD_gradient(dnorm_op_switch, b, grad, a, tmp, op, Ops.apply!);
     @info "check $(typeof(op))" grad2 LinAlg.dot(grad,grad)
     @test grad2 ≈ LinAlg.dot(grad,grad)
+
+    run() = norm_op(a, b, tmp, op, Ops.apply!)
+    display(@benchmark $run())
 end
 
 # test div with AsDensity output

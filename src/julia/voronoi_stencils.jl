@@ -195,6 +195,27 @@ $(INB(:gradient, :gradcov))
     Fix(get_difference, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
 """
+    vsphere = mul_grad(vsphere) # $OPTIONAL
+    mulgrad = mul_grad(vsphere, edge)
+    a∇b[edge] = mulgrad(a,b)     # $(SINGLE(:a, :b))
+    a∇b[k, edge] = mulgrad(a, b, k)   # $(MULTI(:a, :b))
+
+Compute gradient of `b` at $EDGE of $SPH, multiplied by `a`.
+
+$(SCALAR(:a, :b))
+$(COV(:a∇b))
+
+$(INB(:mul_grad, :mulgrad))
+"""
+@inl mul_grad(vsphere) = @lhs (; edge_left_right) = vsphere
+
+@inl mul_grad((; edge_left_right), ij::Int) =
+    Fix(get_mul_grad, (edge_left_right[1, ij], edge_left_right[2, ij]))
+
+@inl get_mul_grad(left, right, a, q) = (a[right]+a[left])*(q[right] - q[left])/2
+@inl get_mul_grad(left, right, a, q, k) = (a[k, right]+a[k, left])*(q[k, right] - q[k, left])/2
+
+"""
     vsphere = grad_form(vsphere) # $OPTIONAL
     grad = grad_form(vsphere, edge)
     gradcov[edge] = grad(Q)         # $(SINGLE(:Q))
@@ -438,16 +459,16 @@ end
 
 """
     vsphere = div_centered_flux(vsphere) # $OPTIONAL
-    div_flux = div_centered_flux(vsphere, edge)
-    divF[cell] = div_flux(flux, q)         # $(SINGLE(:flux, :q))
-    divF[k, cell] = div_flux(flux, q, k)   # $(MULTI(:flux, :q))
+    div_flux = div_centered_flux(vsphere, cell)
+    divqF[cell] = div_flux(q, flux)         # $(SINGLE(:flux, :q))
+    divqF[k, cell] = div_flux(q, flux, k)   # $(MULTI(:flux, :q))
 
-Compute divergence of `flux*q` at $CELL of $SPH, $WRT. `q` is interpolated by a simple
+Compute divergence of `q*flux` at $CELL of $SPH, $WRT. `q` is interpolated by a simple
 centered average.
 
 $(SCALAR(:q))
 $(CONTRA(:flux))
-$(TWOFORM(:divF))
+$(TWOFORM(:divqF))
 
 $(INB(:div_centered_flux, :div_flux))
 """
@@ -456,7 +477,7 @@ $(INB(:div_centered_flux, :div_flux))
 @gen div_centered_flux(vsphere, cell::Int, ::Val{N}) where N = quote
     (; primal_neighbour, primal_edge, primal_ne) = vsphere
     cells = @unroll (primal_neighbour[e, cell] for e=1:$N)
-    edges = @unroll (primal_edges[e, cell] for e=1:$N)
+    edges = @unroll (primal_edge[e, cell] for e=1:$N)
     signs = @unroll (primal_ne[e, cell]/2 for e=1:$N) # factor 1/2 is for centered average
     Fix(get_div_centered_flux, (cell, cells, edges, signs))    
 end
@@ -596,20 +617,20 @@ end
     @unroll sum(weights[e] * a[k, cells[e]]*b[k, cells[e]] for e = 1:$N)
 end
 
-@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, flux, q) where N = quote
+@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, q, flux) where N = quote
     @unroll sum( weights[e]*flux[edges[e]]*(q[cell]+q[cells[e]]) for e=1:$N)
 end
 
-@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, flux, q, k) where N = quote
+@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, q, flux, k) where N = quote
     @unroll sum( weights[e]*flux[k, edges[e]]*(q[k, cell]+q[k, cells[e]]) for e=1:$N)
 end
 
 @gen get_dot_grad(cell, cells::Ints{N}, edges, weights, flux, q) where N = quote
-    @unroll sum( weights[e]*flux[edges[e]]*(q[cells[e]]-q[cell]) for e=1:$N)
+    @unroll sum( weights[e]*flux[edges[e]]*(q[cells[e]]-q[cell]) for e=1:$N)/2
 end
 
 @gen get_dot_grad(cell, cells::Ints{N}, edges, weights, flux, q, k) where N = quote
-    @unroll sum( weights[e]*flux[k, edges[e]]*(q[k, cells[e]]-q[k, cell]) for e=1:$N)
+    @unroll sum( weights[e]*flux[k, edges[e]]*(q[k, cells[e]]-q[k, cell]) for e=1:$N)/2
 end
 
 @gen sum_antisym(edge, edges::Ints{N}, weight, U, V) where {N} = quote

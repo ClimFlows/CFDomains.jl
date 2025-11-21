@@ -92,6 +92,7 @@ end
     # Bilinear VoronoiOperator{1,2}
     test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
     test_op(qe, ucov, tmp_e, Ops.EnergyTRiSK(sphere))
+    test_op(q, ucov, tmp_i, Ops.DivCenteredFlux(sphere))
     # LazyDiagonalOp
     test_norm_div(ucov, tmp_i, sphere)
 end

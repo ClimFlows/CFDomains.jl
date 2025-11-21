@@ -33,7 +33,7 @@ struct Get{N}
     Get(ij, N::Int) = new{N}(ij)
 end
 (getter::Get{N})(stencil) where N = get_stencil(Val{N}(), getter.ij, stencil)
-(getter::Get)(s1, s2) where N = getter(s1), getter(s2)
+(getter::Get)(s1, s2) = getter(s1), getter(s2)
 Fix(fun, getter::Get, a, b) = Fix(fun, getter(a, b))
 
 @gen get_stencil(::Val{N}, ij, stencil) where {N} = quote
@@ -65,3 +65,4 @@ SINGLE(u,v) = "single-layer, `$(string(u))` and `$(string(v))` are ::AbstractVec
 MULTI(u,v) = "multi-layer, `$(string(u))` and `$(string(v))` are ::AbstractMatrix"
 COV(u,v) = "`$(string(u))` and `$(string(v))` are *covariant* vector fields known at edges."
 CONTRA(u,v) = "`$(string(u))` and `$(string(v))` are *contravariant* vector fields known at edges."
+SCALAR(a,b) = "`$(string(a))` and `$(string(a))` are a scalar fields known at *primal* cells."
