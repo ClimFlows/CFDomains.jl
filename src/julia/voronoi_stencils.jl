@@ -1,60 +1,9 @@
 module Stencils
 
 using CFDomains: HVLayout, VHLayout
-
 using ManagedLoops: @unroll
 
-macro gen(expr)
-    esc(:(Base.@propagate_inbounds @generated $expr))
-end
-
-macro inl(expr)
-    esc(:(Base.@propagate_inbounds $expr))
-end
-
-macro lhs(x::Expr) # in assignment 'a=b', returns 'a' instead of 'b'
-    @assert x.head == :(=)
-    a, b = x.args
-    return esc( :( $a=$b ; $a))
-end
-
-# for docstrings
-const OPTIONAL = "optional, returns only relevant fields as a named tuple"
-const WRT = "with respect to the unit sphere"
-const SPH = "`vsphere::VoronoiSphere`"
-const CELL = "`cell::Int`"
-const EDGE = "`edge::Int`"
-const DUAL = "`dual_cell::Int`"
-const NEDGE = "`N=sphere.primal_deg[cell]` is the number of cell edges and must be provided as a compile-time constant for performance. This may be done via the macro `@unroll` from `ManagedLoops`. "
-INB(a,b) = "`@inbounds` propagates into `$(string(a))` and `$(string(b))`."
-SINGLE(u) = "single-layer, $(string(u))::AbstractVector"
-MULTI(u) = "multi-layer, $(string(u))::AbstractMatrix"
-SCALAR(q) = "`$(string(q))` is a scalar field known at *primal* cells."
-DUALSCALAR(q) = "`$(string(q))` is a scalar field known at *dual* cells."
-EDGESCALAR(q) = "`$(string(q))` is a scalar field known at *edges*."
-DUAL2FORM(q) = "`$(string(q))` is a *density* (two-form) over *dual* cells. To obtain a scalar, divide `$(string(q))` by the dual cell area `vsphere.Av`"
-TWOFORM(q) = "`$(string(q))` is a *density* (two-form) over *primal* cells. To obtain a scalar, divide `$(string(q))` by the primal cell area `vsphere.Ai`"
-
-COV(q) = "`$(string(q))` is a *covariant* vector field known at edges."
-CONTRA(q) = "`$(string(q))` is a *contravariant* vector field known at edges."
-
-SINGLE(u,v) = "single-layer, `$(string(u))` and `$(string(v))` are ::AbstractVector"
-MULTI(u,v) = "multi-layer, `$(string(u))` and `$(string(v))` are ::AbstractMatrix"
-COV(u,v) = "`$(string(u))` and `$(string(v))` are *covariant* vector fields known at edges."
-CONTRA(u,v) = "`$(string(u))` and `$(string(v))` are *contravariant* vector fields known at edges."
-
-"""
-    g = Fix(f, args)
-Return callable `g` such that `g(x,...)` calls `f` by prepending `args...` before `x...`:
-
-    g(x...) == f(args..., x...)
-This is similar to `Base.Fix1`, with several arguments.
-"""
-struct Fix{Fun,Coefs}
-    fun::Fun # operator to call
-    coefs::Coefs # local mesh information
-end
-@inl (st::Fix)(args...) = st.fun(st.coefs..., args...)
+include("voronoi_stencils_helpers.jl")
 
 # Each stencil operation is implemented in three steps:
 # 1- Extract only those fields that are relevant for the stencil
@@ -100,12 +49,7 @@ $(DUALSCALAR(:qv))
 $(INB(:average_iv, :avg))
 """
 @inl average_iv(vsphere) = @lhs (; dual_vertex, Riv2) = vsphere
-
-@inl function average_iv(vsphere, ij::Int)
-    cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
-    weights = @unroll (vsphere.Riv2[e, ij] for e = 1:3)
-    return Fix(sum_weighted, (cells, weights))
-end
+@inl average_iv((; dual_vertex, Riv2), ij::Int) = Fix(sum_weighted, Get(ij, 3), dual_vertex, Riv2)
 
 """
     vsphere = average_iv_form(vsphere) # $OPTIONAL
@@ -120,13 +64,8 @@ $(DUAL2FORM(:qv))
 
 $(INB(:average_iv_form, :avg))
 """
-@inl average_iv_form(vsphere) = @lhs (; dual_vertex, Aiv) = vsphere
-
-@inl function average_iv_form(vsphere, ij::Int)
-    cells = @unroll (vsphere.dual_vertex[e, ij] for e = 1:3)
-    weights = @unroll (vsphere.Avi[e, ij] for e = 1:3)
-    return Fix(sum_weighted, (cells, weights))
-end
+@inl average_iv_form(vsphere) = @lhs (; dual_vertex, Avi) = vsphere
+@inl average_iv_form((; dual_vertex, Avi), ij::Int) = Fix(sum_weighted, Get(ij, 3), dual_vertex, Avi)
 
 """
     vsphere = average_ve(vsphere) # $OPTIONAL
@@ -142,6 +81,7 @@ $(EDGESCALAR(:qe))
 $(INB(:average_ve, :avg))
 """
 @inl average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
+
 @inl average_ve(vsphere, ij::Int) =
     Fix(get_average, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
@@ -159,13 +99,10 @@ $NEDGE
 
 $(INB(:average_vi_form, :avg))
 """
-@inl average_vi_form(vsphere) = @lhs (; Avi, primal_vertex, primal_ne) = vsphere
+@inl average_vi_form(vsphere) = @lhs (; Aiv, primal_vertex) = vsphere
 
-@gen average_vi_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
-    vertices = @unroll (vsphere.primal_vertex[v, ij] for v = 1:$N)
-    weights = @unroll (vsphere.Aiv[v, ij] for v = 1:$N)
-    return Fix(sum_weighted, (vertices, weights))
-end
+@inl average_vi_form((; Aiv, primal_vertex), ij::Int, N::Val) =
+    Fix(sum_weighted, Get(ij, N), primal_vertex, Aiv)
 
 #========================= divergence =======================#
 
@@ -211,11 +148,8 @@ $(INB(:div_form, :divf))
 """
 @inl div_form(vsphere) = @lhs (; primal_edge, primal_ne) = vsphere
 
-@gen div_form(vsphere, ij::Int, v::Val{N}) where {N} = quote
-    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
-    signs = @unroll (vsphere.primal_ne[e, ij] for e = 1:$N)
-    return Fix(sum_weighted, (edges, signs))
-end
+@inl div_form((; primal_edge, primal_ne), ij::Int, N::Val) =    
+    Fix(sum_weighted, Get(ij, N), primal_edge, primal_ne)
 
 #========================= curl =====================#
 
@@ -315,9 +249,9 @@ $(INB(:gradient3d, :grad))
 """
 @inl gradient3d(vsphere) = @lhs (; primal_neighbour, primal_grad3d) = vsphere
 
-@gen gradient3d(vsphere, cell, v::Val{N}) where {N} = quote
-    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$N)
-    grads = @unroll (vsphere.primal_grad3d[edge, cell] for edge = 1:$N)
+@inl function gradient3d((; primal_neighbour, primal_grad3d), cell, N::Val)
+    get = Get(cell, N)
+    neighbours, grads = get(primal_neighbour, primal_grad3d)
     return Fix(get_gradient3d, (cell, neighbours, grads))
 end
 
@@ -454,13 +388,12 @@ $NEDGE
 
 $(INB(:contraction, :contract))
 """
-@inl contraction(vsphere) = @lhs (; Ai, primal_edge) = vsphere
+@inl contraction(vsphere) = @lhs (; inv_Ai, primal_edge) = vsphere
 
-@gen contraction(vsphere, ij, v::Val{N}) where {N} = quote
-    # the factor 1/2 for the Perot formula is incorporated into inv_area
-    inv_area = inv(2 * vsphere.Ai[ij])
-    edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
-    return Fix(get_contraction, (edges, inv_area))
+@inl function contraction((; inv_Ai, primal_edge), ij, N::Val)
+    # the factor 1/2 is for the Perot formula
+    get = Get(ij, N)
+    return Fix(get_contraction, (get(primal_edge), inv_Ai[ij]/2))
 end
 
 #======================= centered flux ======================#
@@ -486,10 +419,9 @@ $(INB(:centered_flux, :cflux))
 """
 @inl centered_flux(vsphere) = @lhs (; edge_left_right, le_de) = vsphere
 
-@inl function centered_flux(vsphere, ij::Int)
-    # le_de includes the factor 1/2 for the centered average
-    left_right, le_de = vsphere.edge_left_right, vsphere.le_de
-    Fix(get_centered_flux, (ij, left_right[1, ij], left_right[2, ij], le_de[ij] / 2))
+@inl function centered_flux((; edge_left_right, le_de), ij::Int)
+    # factor 1/2 is for the centered average
+    Fix(get_centered_flux, (ij, edge_left_right[1, ij], edge_left_right[2, ij], le_de[ij] / 2))
 end
 
 # Makes sense for a conformal metric.
@@ -501,6 +433,54 @@ end
     le_de * ucov[k, ij] * (mass[k, left] + mass[k, right])
 @inl get_centered_flux(ij, left, right, le_de, mass, ucov) =
     le_de * ucov[ij] * (mass[left] + mass[right])
+
+#============ centered flux divergence and related ======================#
+
+"""
+    vsphere = div_centered_flux(vsphere) # $OPTIONAL
+    div_flux = div_centered_flux(vsphere, edge)
+    divF[cell] = div_flux(flux, q)         # $(SINGLE(:flux, :q))
+    divF[k, cell] = div_flux(flux, q, k)   # $(MULTI(:flux, :q))
+
+Compute divergence of `flux*q` at $CELL of $SPH, $WRT. `q` is interpolated by a simple
+centered average.
+
+$(SCALAR(:q))
+$(CONTRA(:flux))
+$(TWOFORM(:divF))
+
+$(INB(:div_centered_flux, :div_flux))
+"""
+@inl div_centered_flux(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
+
+@gen div_centered_flux(vsphere, cell::Int, ::Val{N}) where N = quote
+    (; primal_neighbour, primal_edge, primal_ne) = vsphere
+    cells = @unroll (primal_neighbour[e, cell] for e=1:$N)
+    edges = @unroll (primal_edges[e, cell] for e=1:$N)
+    signs = @unroll (primal_ne[e, cell]/2 for e=1:$N) # factor 1/2 is for centered average
+    Fix(get_div_centered_flux, (cell, cells, edges, signs))    
+end
+
+"""
+    vsphere = dot_grad(vsphere) # $OPTIONAL
+    dotgrad = dot_grad(vsphere, cell)
+    Fgradq[cell] = dotgrad(flux, q)         # $(CONTRA(:U))
+    Fgradq[k, cell] = dotgrad(flux, q, k)   # $(MULTI(:flux))
+
+At $CELL, compute the dot product of `flux` with the gradient of `q` $WRT .
+
+$(SCALAR(:q))
+$(CONTRA(:flux))
+$(TWOFORM(:Fgradq))
+
+$(INB(:dot_grad, :dotgrad))
+"""
+@inl dot_grad(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
+
+@inl function dot_grad((; primal_neighbour, primal_edge, primal_ne), cell::Int, N::Val)
+    get = Get(cell, N)
+    Fix(get_dot_grad, (cell, get(primal_neighbour), get(primal_edge), get(primal_ne)))    
+end
 
 #=========================== TRiSK ======================#
 
@@ -525,10 +505,32 @@ $(INB(:TRiSK, :trisk))
 """
 @inl TRiSK(vsphere) = @lhs (; trisk, wee) = vsphere
 
-@gen TRiSK(vsphere, ij::Int, ::Val{N}) where {N} = quote
-    trisk = @unroll (vsphere.trisk[edge, ij] for edge = 1:$N)
-    wee = @unroll (vsphere.wee[edge, ij] for edge = 1:$N)
-    Fix(sum_TRiSK1, (ij, trisk, wee))
+@inl TRiSK(vsphere, edge, deg) = Fix_TRiSK(sum_TRiSK1, vsphere, edge, deg)
+
+"""
+    vsphere = cross_product(vsphere) # $OPTIONAL
+    cprod = cross_product(vsphere, edge, Val(N))
+    q[edge]    = cprod(U,V)        # $(SINGLE(:U, :V))
+    q[k, edge] = cprod(U, V, k)    # $(MULTI(:U, :V))
+
+Compute the cross product U×V at $EDGE of $SPH.
+
+$(CONTRA(:U, :V))
+$(EDGE2FORM(:q))
+
+`N=sphere.trisk_deg[edge]` is the number of edges involved in the TRiSK stencil
+and must be provided as a compile-time constant for performance. 
+This may be done via the macro `@unroll` from `ManagedLoops`.
+
+$(INB(:cross_product, :cprod))
+"""
+@inl cross_product(vsphere) = @lhs (; trisk, wee) = vsphere
+
+@inl cross_product(vsphere, edge, deg) = Fix_TRiSK(sum_antisym, vsphere, edge, deg)
+
+@inl function Fix_TRiSK(fun::Fun, (; trisk, wee), edge::Int, deg::Val) where Fun
+    get = Get(edge, deg)
+    Fix(fun, (edge, get(trisk), get(wee)))
 end
 
 #=========================== perp ======================#
@@ -594,12 +596,36 @@ end
     @unroll sum(weights[e] * a[k, cells[e]]*b[k, cells[e]] for e = 1:$N)
 end
 
-@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe::AbstractVector) where {N} = quote
-    @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
+@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, flux, q) where N = quote
+    @unroll sum( weights[e]*flux[edges[e]]*(q[cell]+q[cells[e]]) for e=1:$N)
 end
 
-@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe::AbstractMatrix, k) where {N} = quote
-    @unroll sum((weight[e] * U[k, edge[e]]) * (qe[k, ij] + qe[k, edge[e]]) for e = 1:$N) / 2
+@gen get_div_centered_flux(cell, cells::Ints{N}, edges, weights, flux, q, k) where N = quote
+    @unroll sum( weights[e]*flux[k, edges[e]]*(q[k, cell]+q[k, cells[e]]) for e=1:$N)
+end
+
+@gen get_dot_grad(cell, cells::Ints{N}, edges, weights, flux, q) where N = quote
+    @unroll sum( weights[e]*flux[edges[e]]*(q[cells[e]]-q[cell]) for e=1:$N)
+end
+
+@gen get_dot_grad(cell, cells::Ints{N}, edges, weights, flux, q, k) where N = quote
+    @unroll sum( weights[e]*flux[k, edges[e]]*(q[k, cells[e]]-q[k, cell]) for e=1:$N)
+end
+
+@gen sum_antisym(edge, edges::Ints{N}, weight, U, V) where {N} = quote
+    @unroll sum(weight[e]*(U[edges[e]]*V[edge]-V[edges[e]]*U[edge]) for e = 1:$N) / 2
+end
+
+@gen sum_antisym(edge, edges::Ints{N}, weight, U, V, k) where {N} = quote
+    @unroll sum(weight[e]*(U[k, edges[e]]*V[k, edge]-V[k, edges[e]]*U[k, edge]) for e = 1:$N) / 2
+end
+
+@gen sum_TRiSK1(edge, edges::Ints{N}, weights, U, qe::AbstractVector) where {N} = quote
+    @unroll sum((weights[e] * U[edges[e]]) * (qe[edge] + qe[edges[e]]) for e = 1:$N) / 2
+end
+
+@gen sum_TRiSK1(edge, edges::Ints{N}, weights, U, qe::AbstractMatrix, k) where {N} = quote
+    @unroll sum((weights[e] * U[k, edges[e]]) * (qe[k, edge] + qe[k, edges[e]]) for e = 1:$N) / 2
 end
 
 @gen get_contraction(edges::Ints{N}, inv_area, ucontra, vcov) where {N} = quote

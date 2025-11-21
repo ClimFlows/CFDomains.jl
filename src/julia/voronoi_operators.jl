@@ -252,6 +252,28 @@ end
     loop_simple(adj_action_in(op.action!), op, ∂ucov, Stencils.centered_flux, m, ∂F)
 end
 
+#========== Energy-conserving TRiSK ===========#
+
+struct EnergyTRiSK{Action, F} <: VoronoiOperator{1,2}
+    action!::Action # how to combine op(input) with output
+    trisk_deg::Vector{Int32}
+    trisk::Matrix{Int32}
+    wee::Matrix{F}
+end
+EnergyTRiSK(sph, action! = set!) = EnergyTRiSK(action!, sph.trisk_deg, sph.trisk, sph.wee)
+
+@inline function apply_internal!(ucov, op::EnergyTRiSK, U, q)
+    loop_trisk(op.action!, op, ucov, Stencils.TRiSK, U, q)
+    return U, q
+end
+
+@inline function apply_adj_internal!(∂ucov, op::EnergyTRiSK, ∂U, ∂q, (U,q))
+    loop_trisk(flip(adj_action_in(op.action!)), op, ∂U, Stencils.TRiSK, ∂ucov, q)
+    loop_trisk(adj_action_in(op.action!), op, ∂q, Stencils.cross_product, U, ∂ucov)
+end
+
+#========== Centered flux divergence ===========#
+
 #=======================================================#
 #===================== Loop styles =====================#
 #=======================================================#

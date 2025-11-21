@@ -75,6 +75,7 @@ end
 
 @testset "VoronoiOperators" begin
     q = randn(choices.precision, length(sphere.lon_i))
+    qe = randn(choices.precision, length(sphere.lon_e))
     ucov = randn(choices.precision, length(sphere.lon_e))
     tmp_i = similar(q)
     tmp_e = similar(q, length(sphere.lon_e))
@@ -90,6 +91,7 @@ end
     test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
     # Bilinear VoronoiOperator{1,2}
     test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
+    test_op(qe, ucov, tmp_e, Ops.EnergyTRiSK(sphere))
     # LazyDiagonalOp
     test_norm_div(ucov, tmp_i, sphere)
 end

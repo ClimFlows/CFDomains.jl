@@ -312,6 +312,15 @@ $
   + sum_(e e') bleu( 1/2 w_(e e')(partial V^e  U^(e') - partial V^(e')  U^(e) )) delta q_e \
 $
 
+$
+  integral partial vvec dot (delta q med kvec cprod uvec) 
+  = 
+  integral delta q med kvec  dot ( uvec cprod  partial vvec  ) 
+$
+$
+  partial q = uvec cprod  partial vvec
+$
+
 == Divergence of centered flux
 
 $
