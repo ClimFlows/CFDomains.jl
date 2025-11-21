@@ -56,7 +56,7 @@ struct Fix{Fun,Coefs}
 end
 @inl (st::Fix)(args...) = st.fun(st.coefs..., args...)
 
-# The general structure is as follows:
+# Each stencil operation is implemented in three steps:
 # 1- Extract only those fields that are relevant for the stencil
 #       sph = <stencil>(sph)
 #    Returns a named tuple.
@@ -183,11 +183,11 @@ $NEDGE
 
 $(INB(:divergence, :div))
 """
-@inl divergence(vsphere) = @lhs (; Ai, primal_edge, primal_ne) = vsphere
+@inl divergence(vsphere) = @lhs (; inv_Ai, primal_edge, primal_ne) = vsphere
 
 @gen divergence(vsphere, ij::Int, v::Val{N}) where N = quote
     # signs include the inv_area factor
-    inv_area = inv(vsphere.Ai[ij])
+    inv_area = vsphere.inv_Ai[ij]
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
     signs = @unroll (inv_area * vsphere.primal_ne[e, ij] for e = 1:$N)
     return Fix(sum_weighted, (edges, signs))
@@ -258,10 +258,7 @@ $(INB(:gradient, :gradcov))
 @inl gradient(vsphere) = @lhs (; edge_left_right) = vsphere
 
 @inl gradient(vsphere, ij::Int) =
-    Fix(get_gradient, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
-
-@inl get_gradient(left, right, q) = q[right] - q[left]
-@inl get_gradient(left, right, q, k) = q[k, right] - q[k, left]
+    Fix(get_difference, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
 """
     vsphere = grad_form(vsphere) # $OPTIONAL
@@ -276,10 +273,11 @@ $(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
 $(INB(:grad_form, :gradcov))
 """
-@inl grad_form(vsphere) = @lhs (; Ai, edge_left_right) = vsphere
+@inl grad_form(vsphere) = @lhs (; inv_Ai, edge_left_right) = vsphere
 @inl function grad_form(vsphere, ij::Int)
-    Ai, left, right = vsphere.Ai, vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]
-    Fix(get_grad_form, (left, right, inv(Ai[left]), inv(Ai[right])))
+    (; inv_Ai, edge_left_right) = vsphere
+    left, right = edge_left_right[1, ij], edge_left_right[2, ij]
+    Fix(get_grad_form, (left, right, inv_Ai[left], inv_Ai[right]))
 end
 @inl get_grad_form(left, right, Xl, Xr, Q) = Xr*Q[right] - Xl*Q[left]
 @inl get_grad_form(left, right, Xl, Xr, Q, k) = Xr*Q[k, right] - Xl*Q[k, left]
@@ -299,7 +297,7 @@ $(INB(:gradperp, :grad))
 """
 @inl gradperp(vsphere) = @lhs (; edge_down_up) = vsphere
 @inl gradperp(vsphere, ij::Int) =
-    Fix(get_gradient, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
+    Fix(get_difference, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
 """
     vsphere = gradient3d(vsphere) # $OPTIONAL
@@ -317,18 +315,10 @@ $(INB(:gradient3d, :grad))
 """
 @inl gradient3d(vsphere) = @lhs (; primal_neighbour, primal_grad3d) = vsphere
 
-@gen gradient3d(vsphere, cell, v::Val{deg}) where {deg} = quote
-    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$deg)
-    grads = @unroll (vsphere.primal_grad3d[edge, cell] for edge = 1:$deg)
-    return Fix(get_gradient3d, (v, cell, neighbours, grads))
-end
-@gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q, k) where {deg} = quote
-    dq = @unroll (q[k, neighbours[edge]] - q[k, cell] for edge = 1:$deg)
-    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
-end
-@gen get_gradient3d(::Val{deg}, cell, neighbours, grads, q) where {deg} = quote
-    dq = @unroll (q[neighbours[edge]] - q[cell] for edge = 1:$deg)
-    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$deg) for dim = 1:3)
+@gen gradient3d(vsphere, cell, v::Val{N}) where {N} = quote
+    neighbours = @unroll (vsphere.primal_neighbour[edge, cell] for edge = 1:$N)
+    grads = @unroll (vsphere.primal_grad3d[edge, cell] for edge = 1:$N)
+    return Fix(get_gradient3d, (cell, neighbours, grads))
 end
 
 #================= dot product (covariant inputs) =================#
@@ -470,15 +460,7 @@ $(INB(:contraction, :contract))
     # the factor 1/2 for the Perot formula is incorporated into inv_area
     inv_area = inv(2 * vsphere.Ai[ij])
     edges = @unroll (vsphere.primal_edge[e, ij] for e = 1:$N)
-    return Fix(get_contraction, (v, edges, inv_area))
-end
-
-@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov) where {N} = quote
-    inv_area * @unroll sum(ucontra[edges[e]] * vcov[edges[e]] for e = 1:$N)
-end
-
-@gen get_contraction(::Val{N}, edges, inv_area, ucontra, vcov, k) where {N} = quote
-    inv_area * @unroll sum(ucontra[k, edges[e]] * vcov[k, edges[e]] for e = 1:$N)
+    return Fix(get_contraction, (edges, inv_area))
 end
 
 #======================= centered flux ======================#
@@ -575,9 +557,18 @@ $(INB(:perp, :op))
     return Fix(sum_weighted, (edges, coefs))
 end
 
-#========================== sums ==========================#
+#==================== leaf expressions ======================#
 
 const Ints{N} = NTuple{N, Int32}
+
+@inl get_average(left, right, a) = (a[left] + a[right]) / 2
+@inl get_average(left, right, a, k) = (a[k, left] + a[k, right]) / 2
+
+@inl get_difference(left, right, q) = q[right] - q[left]
+@inl get_difference(left, right, q, k) = q[k, right] - q[k, left]
+
+@inl sum_TRiSK1(_, edges::Ints, weights, U) = sum_weighted(edges, weights, U)
+@inl sum_TRiSK1(_, edges::Ints, weights, U, k) = sum_weighted(edges, weights, U, k)
 
 @gen sum_weighted(cells::Ints{N}, weights, a) where N = quote
     @unroll sum(weights[e] * a[cells[e]] for e = 1:$N)
@@ -603,28 +594,30 @@ end
     @unroll sum(weights[e] * a[k, cells[e]]*b[k, cells[e]] for e = 1:$N)
 end
 
-# single-layer, linear
-@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U) where {N} = quote
-    @unroll sum((weight[e] * U[edge[e]]) for e = 1:$N)
-end
-
-# multi-layer, linear
-@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, k) where {N} = quote
-    @unroll sum((weight[e] * U[k, edge[e]]) for e = 1:$N)
-end
-
-# single-layer, non-linear
 @gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe::AbstractVector) where {N} = quote
     @unroll sum((weight[e] * U[edge[e]]) * (qe[ij] + qe[edge[e]]) for e = 1:$N) / 2
 end
 
-# multi-layer, non-linear
-@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe, k) where {N} = quote
+@gen sum_TRiSK1(ij, edge::Ints{N}, weight, U, qe::AbstractMatrix, k) where {N} = quote
     @unroll sum((weight[e] * U[k, edge[e]]) * (qe[k, ij] + qe[k, edge[e]]) for e = 1:$N) / 2
 end
 
-@inl get_average(left, right, a) = (a[left] + a[right]) / 2
-@inl get_average(left, right, a, k) = (a[k, left] + a[k, right]) / 2
+@gen get_contraction(edges::Ints{N}, inv_area, ucontra, vcov) where {N} = quote
+    inv_area * @unroll sum(ucontra[edges[e]] * vcov[edges[e]] for e = 1:$N)
+end
+
+@gen get_contraction(edges::Ints{N}, inv_area, ucontra, vcov, k) where {N} = quote
+    inv_area * @unroll sum(ucontra[k, edges[e]] * vcov[k, edges[e]] for e = 1:$N)
+end
+
+@gen get_gradient3d(cell, neighbours::Ints{N}, grads, q, k) where {N} = quote
+    dq = @unroll (q[k, neighbours[edge]] - q[k, cell] for edge = 1:$N)
+    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$N) for dim = 1:3)
+end
+@gen get_gradient3d(cell, neighbours::Ints{N}, grads, q) where {N} = quote
+    dq = @unroll (q[neighbours[edge]] - q[cell] for edge = 1:$N)
+    @unroll (sum(dq[edge] * grads[edge][dim] for edge = 1:$N) for dim = 1:3)
+end
 
 #===================== helpers hiding @unroll ====================#
 
