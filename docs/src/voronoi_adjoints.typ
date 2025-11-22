@@ -186,10 +186,10 @@
    partial q^i = - (uvec dot grad partial d)^i =& bleu( -sum_(e in E(i)) uvec^e nabla_e partial d_i )
  $, 
   // multiplied gradient
-  $ uvec_e = (theta grad pi)_e = (rouge(theta_i))_e nabla_e bleu(pi_i) $,
+  $ uvec_e = (a grad b)_e = (rouge(a_i))_e nabla_e bleu(b_i) $,
   $ 
-  partial theta^i = (partial uvec dot grad pi)^i = & rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ), \
-  partial pi^i = - (div theta uvec)^i = & bleu(-sum_(e in E(i)) n_(i e) (theta_i)_e partial uvec^e )
+  partial a^i = (partial uvec dot grad b)^i = & rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ), \
+  partial b^i = - (div a uvec)^i = & bleu(-sum_(e in E(i)) n_(i e) (a_i)_e partial uvec^e )
   $,
  )
  #table(
@@ -338,16 +338,16 @@ $
 == Multiplied gradient
 
 $
-  (theta_i, pi_i) mapsto uvec_e = (theta grad pi)_e = (theta_i)_e nabla_e pi_i \
+  (a_i, b_i) mapsto uvec_e = (a grad b)_e = (a_i)_e nabla_e b_i \
   partial uvec^e mapsto 
-    partial theta^i = rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ), spc 
-    partial pi^i = bleu( -sum_(e in E(i)) (theta_i)_e n_(i e) partial uvec^e ), \
+    partial a^i = rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ), spc 
+    partial b^i = bleu( -sum_(e in E(i)) (a_i)_e n_(i e) partial uvec^e ), \
   \
   sum_e partial uvec^e delta uvec_e 
   = sum_e partial uvec^e 
-  (theta_i)_e nabla_e delta pi_i  
-  + sum_e partial uvec^e nabla_e pi_i (delta theta_i)_e \
-  = sum_i rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ) delta theta_i
-    + sum_i bleu( -sum_(e in E(i)) (theta_i)_e n_(i e) partial uvec^e 
-   ) delta pi_i
+  (a_i)_e nabla_e delta b_i  
+  + sum_e partial uvec^e nabla_e b_i (delta a_i)_e \
+  = sum_i rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ) delta a_i
+    + sum_i bleu( -sum_(e in E(i)) (a_i)_e n_(i e) partial uvec^e 
+   ) delta b_i
 $
