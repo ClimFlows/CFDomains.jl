@@ -1,10 +1,12 @@
 macro inl(expr)
     esc(:(Base.@propagate_inbounds $expr))
+#    esc(:(@inline @inbounds $expr))
 #    esc(expr)
 end
 
 macro gen(expr)
     esc(:(Base.@propagate_inbounds @generated $expr))
+#    esc(:(@inbounds @generated $expr))
 #    esc(:(@generated $expr))
 end
 

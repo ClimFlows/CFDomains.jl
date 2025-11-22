@@ -1,6 +1,8 @@
 module VoronoiOperators
 
 using Base: @propagate_inbounds as @prop
+# using Base: @inbounds as @prop
+
 using ManagedLoops: @unroll
 
 import CFDomains.Stencils
@@ -11,6 +13,11 @@ abstract type VoronoiOperator{In,Out} end
     _, names... = fieldnames(T)
     fields = map(name->getproperty(sph, name), names)
     return T(action!, fields...)
+end
+
+macro inb(expr)
+    esc(:(@inbounds $expr))
+#    esc(expr)
 end
 
 #================== lazy diagonal operator ===============#
@@ -50,6 +57,8 @@ Base.eachindex(y::WritableDVP) = eachindex(y.x)
 @prop setzero!(out, i)     = out[i] = 0
 @prop unchanged!(out, i)   = nothing
 
+@prop set!(out, v, k, i)   = out[k, i] = v
+
 # (out, in) := (op(in), in) => (∂out, ∂in) := (0, ∂in + opᵀ(∂out))
 adj_action_in(::typeof(set!)) = addto!
 adj_action_out(::typeof(set!)) = setzero!
@@ -72,7 +81,7 @@ adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
 
 (op::VoronoiOperator{1,1})(output, input) = apply!(output, op, input)
 
-function apply!(output, stencil::VoronoiOperator{1,1}, input) 
+@inline function apply!(output, stencil::VoronoiOperator{1,1}, input) 
     apply_internal!(output, stencil, input)
     return nothing
 end
@@ -80,7 +89,7 @@ end
 function apply_adj!(∂out, op::VoronoiOperator{1,1}, ∂in, extras)
     apply_adj_internal!(∂out, op, ∂in, extras)
     action! = adj_action_out(op.action!)
-    @inbounds for i in eachindex(∂out)
+    @inb for i in eachindex(∂out)
         action!(∂out, i)
     end
 end
@@ -198,12 +207,12 @@ end
     return input # will be needed by adjoint
 end
 
-@inline @inbounds function stencil_squared_adj(op, edge)
+@inline @inb function stencil_squared_adj(op, edge)
     left = op.edge_left_right[1, edge] 
     right = op.edge_left_right[2, edge] 
     hodge = op.le_de[edge]
-    @inline value(∂K, ucov) = @inbounds hodge*ucov[edge]*(∂K[left]+∂K[right])
-    @inline value(∂K, ucov, k) = @inbounds hodge*ucov[k,edge]*(∂K[k, left]+∂K[k, right])
+    @inline value(∂K, ucov) = @inb hodge*ucov[edge]*(∂K[left]+∂K[right])
+    @inline value(∂K, ucov, k) = @inb hodge*ucov[k,edge]*(∂K[k, left]+∂K[k, right])
     return value
 end
 
@@ -225,7 +234,7 @@ end
 function apply_adj!(∂out, op::VoronoiOperator{1,2}, ∂in1, ∂in2, extras)
     apply_adj_internal!(∂out, op, ∂in1, ∂in2, extras)
     action! = adj_action_out(op.action!)
-    @inbounds for i in eachindex(∂out)
+    @inb for i in eachindex(∂out)
         action!(∂out, i)
     end
 end
@@ -320,16 +329,26 @@ end
 #===================== Loop styles =====================#
 #=======================================================#
 
-@inline function loop_simple(action!, op, output, stencil, inputs...)
-    @inbounds for i in eachindex(output)
+@inline function loop_simple(action!, op, output::Vector, stencil, inputs...)
+    @inb for i in eachindex(output)
         st = stencil(op, i)
-        action!(output, st(inputs...), i)
+        @inbounds action!(output, st(inputs...), i) # FIXME
     end
     return nothing
 end
 
-@inline function loop_cell(action!, op, output, stencil, inputs...)
-    @inbounds for cell in eachindex(output)
+@inline function loop_simple(action!, op, output::Matrix, stencil, inputs...)
+    @inb for i in axes(output, 2)
+        st = stencil(op, i)
+        @simd ivdep for k in axes(output, 1)
+            action!(output, st(inputs..., k), k, i)
+        end
+    end
+    return nothing
+end
+
+@inline function loop_cell(action!, op, output::Vector, stencil, inputs...)
+    @inb for cell in eachindex(output)
         deg = op.primal_deg[cell]
         @unroll deg in 5:7 begin
             st = stencil(op, cell, Val(deg))
@@ -339,8 +358,8 @@ end
     return nothing
 end
 
-@inline function loop_trisk(action!, op, output, stencil, inputs...)
-    @inbounds for edge in eachindex(output)
+@inline function loop_trisk(action!, op, output::Vector, stencil, inputs...)
+    @inb for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
             st = stencil(op, edge, Val(deg))

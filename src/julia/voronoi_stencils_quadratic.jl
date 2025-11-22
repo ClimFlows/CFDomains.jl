@@ -13,7 +13,7 @@ $(COV(:a∇b))
 
 $(INB(:mul_grad, :mulgrad))
 """
-@inl mul_grad(vsphere) = @lhs (; edge_left_right) = vsphere
+mul_grad(vsphere) = @lhs (; edge_left_right) = vsphere
 
 @inl mul_grad((; edge_left_right), ij::Int) =
     Fix(get_mul_grad, (edge_left_right[1, ij], edge_left_right[2, ij]))
@@ -41,7 +41,7 @@ $NEDGE
 
 $(INB(:dot_product_form, :dot_prod))
 """
-@inl dot_product_form(vsphere) = @lhs (; primal_edge, le_de) = vsphere
+dot_product_form(vsphere) = @lhs (; primal_edge, le_de) = vsphere
 
 @gen dot_product_form(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into hodges
@@ -70,7 +70,7 @@ $NEDGE
 
 $(INB(:squared_covector, :square))
 """
-@inl squared_covector(vsphere) = @lhs (; primal_edge, le_de) = vsphere
+squared_covector(vsphere) = @lhs (; primal_edge, le_de) = vsphere
 
 @gen squared_covector(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into hodges
@@ -100,7 +100,7 @@ in kg⋅s⁻¹ which can be fed into [`divergence`](@ref).
 
 $(INB(:centered_flux, :cflux))
 """
-@inl centered_flux(vsphere) = @lhs (; edge_left_right, le_de) = vsphere
+centered_flux(vsphere) = @lhs (; edge_left_right, le_de) = vsphere
 
 @inl function centered_flux((; edge_left_right, le_de), ij::Int)
     # factor 1/2 is for the centered average
@@ -134,7 +134,7 @@ $(TWOFORM(:divqF))
 
 $(INB(:div_centered_flux, :div_flux))
 """
-@inl div_centered_flux(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
+div_centered_flux(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
 
 @gen div_centered_flux(vsphere, cell::Int, ::Val{N}) where N = quote
     (; primal_neighbour, primal_edge, primal_ne) = vsphere
@@ -160,7 +160,7 @@ $(TWOFORM(:Fgradq))
 
 $(INB(:dot_grad, :dotgrad))
 """
-@inl dot_grad(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
+dot_grad(vsphere) = @lhs (; primal_neighbour, primal_edge, primal_ne) = vsphere
 
 @inl function dot_grad((; primal_neighbour, primal_edge, primal_ne), cell::Int, N::Val)
     get = Get(cell, N)
@@ -186,7 +186,7 @@ This may be done via the macro `@unroll` from `ManagedLoops`.
 
 $(INB(:cross_product, :cprod))
 """
-@inl cross_product(vsphere) = @lhs (; trisk, wee) = vsphere
+cross_product(vsphere) = @lhs (; trisk, wee) = vsphere
 
 @inl cross_product(vsphere, edge, deg) = Fix_TRiSK(sum_antisym, vsphere, edge, deg)
 

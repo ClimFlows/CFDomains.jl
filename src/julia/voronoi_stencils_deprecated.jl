@@ -13,7 +13,7 @@ $(DUALSCALAR(:qv))
 
 $(INB(:average_iv, :avg))
 """
-@inl average_iv(vsphere) = @lhs (; dual_vertex, Riv2) = vsphere
+average_iv(vsphere) = @lhs (; dual_vertex, Riv2) = vsphere
 @inl average_iv((; dual_vertex, Riv2), ij::Int) = Fix(sum_weighted, Get(ij, 3), dual_vertex, Riv2)
 
 #========================= divergence =======================#
@@ -32,7 +32,7 @@ $NEDGE
 
 $(INB(:divergence, :div))
 """
-@inl divergence(vsphere) = @lhs (; inv_Ai, primal_edge, primal_ne) = vsphere
+divergence(vsphere) = @lhs (; inv_Ai, primal_edge, primal_ne) = vsphere
 
 @gen divergence(vsphere, ij::Int, v::Val{N}) where N = quote
     # signs include the inv_area factor
@@ -57,7 +57,8 @@ $(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
 $(INB(:grad_form, :gradcov))
 """
-@inl grad_form(vsphere) = @lhs (; inv_Ai, edge_left_right) = vsphere
+grad_form(vsphere) = @lhs (; inv_Ai, edge_left_right) = vsphere
+
 @inl function grad_form(vsphere, ij::Int)
     (; inv_Ai, edge_left_right) = vsphere
     left, right = edge_left_right[1, ij], edge_left_right[2, ij]
@@ -83,7 +84,7 @@ $NEDGE
 
 $(INB(:dot_product, :dot_prod))
 """
-@inl dot_product(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
+dot_product(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
 
 @gen dot_product(vsphere, ij, v::Val{N}) where {N} = quote
     # the factor 1/2 for the Perot formula is incorporated into inv_area
@@ -113,7 +114,7 @@ $NEDGE
 
 $(INB(:dot_prod_contra, :dot_prod))
 """
-@inl dot_prod_contra(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
+dot_prod_contra(vsphere) = @lhs (; Ai, primal_edge, le_de) = vsphere
 
 @gen dot_prod_contra(vsphere, ij, ::Val{N}) where {N} = quote
     # inv(2*area) is incorporated into hodges
@@ -143,7 +144,7 @@ $NEDGE
 
 $(INB(:contraction, :contract))
 """
-@inl contraction(vsphere) = @lhs (; inv_Ai, primal_edge) = vsphere
+contraction(vsphere) = @lhs (; inv_Ai, primal_edge) = vsphere
 
 @inl function contraction((; inv_Ai, primal_edge), ij, N::Val)
     # the factor 1/2 is for the Perot formula

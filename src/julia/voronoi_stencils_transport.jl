@@ -16,7 +16,7 @@ by its components *normal* to edges of *dual* cells.
 
 $(INB(:perp, :op))
 """
-@inl perp(vsphere) = @lhs (; edge_kite, edge_perp) = vsphere
+perp(vsphere) = @lhs (; edge_kite, edge_perp) = vsphere
 
 @inl function perp(vsphere, edge) 
     edges = @unroll (vsphere.edge_kite[ind, edge] for ind = 1:4)
@@ -40,15 +40,15 @@ $NEDGE
 
 $(INB(:gradient3d, :grad))
 """
-@inl gradient3d(vsphere) = @lhs (; primal_neighbour, primal_grad3d) = vsphere
-
-#==================== leaf expressions ======================#
+gradient3d(vsphere) = @lhs (; primal_neighbour, primal_grad3d) = vsphere
 
 @inl function gradient3d((; primal_neighbour, primal_grad3d), cell, N::Val)
     get = Get(cell, N)
     neighbours, grads = get(primal_neighbour, primal_grad3d)
     return Fix(get_gradient3d, (cell, neighbours, grads))
 end
+
+#==================== leaf expressions ======================#
 
 @gen get_gradient3d(cell, neighbours::Ints{N}, grads, q, k) where {N} = quote
     dq = @unroll (q[k, neighbours[edge]] - q[k, cell] for edge = 1:$N)

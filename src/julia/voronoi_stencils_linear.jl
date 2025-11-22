@@ -13,7 +13,7 @@ $(EDGESCALAR(:qe))
 
 $(INB(:average_ie, :avg))
 """
-@inl average_ie(vsphere) = @lhs (; edge_left_right) = vsphere
+average_ie(vsphere) = @lhs (; edge_left_right) = vsphere
 @inl average_ie(vsphere, ij) =
     Fix(get_average, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
 
@@ -30,7 +30,7 @@ $(DUAL2FORM(:qv))
 
 $(INB(:average_iv_form, :avg))
 """
-@inl average_iv_form(vsphere) = @lhs (; dual_vertex, Avi) = vsphere
+average_iv_form(vsphere) = @lhs (; dual_vertex, Avi) = vsphere
 @inl average_iv_form((; dual_vertex, Avi), ij::Int) = Fix(sum_weighted, Get(ij, 3), dual_vertex, Avi)
 
 """
@@ -46,7 +46,7 @@ $(EDGESCALAR(:qe))
 
 $(INB(:average_ve, :avg))
 """
-@inl average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
+average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
 
 @inl average_ve(vsphere, ij::Int) =
     Fix(get_average, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
@@ -65,7 +65,7 @@ $NEDGE
 
 $(INB(:average_vi_form, :avg))
 """
-@inl average_vi_form(vsphere) = @lhs (; Aiv, primal_vertex) = vsphere
+average_vi_form(vsphere) = @lhs (; Aiv, primal_vertex) = vsphere
 
 @inl average_vi_form((; Aiv, primal_vertex), ij::Int, N::Val) =
     Fix(sum_weighted, Get(ij, N), primal_vertex, Aiv)
@@ -86,7 +86,7 @@ $NEDGE
 
 $(INB(:div_form, :divf))
 """
-@inl div_form(vsphere) = @lhs (; primal_edge, primal_ne) = vsphere
+div_form(vsphere) = @lhs (; primal_edge, primal_ne) = vsphere
 
 @inl div_form((; primal_edge, primal_ne), ij::Int, N::Val) =    
     Fix(sum_weighted, Get(ij, N), primal_edge, primal_ne)
@@ -105,12 +105,11 @@ $(DUAL2FORM(:curlu))
 
 $(INB(:curl, :op))
 """
-@inl curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
+curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
 
 @inl function curl(vsphere, ij::Int)
-    F = eltype(vsphere.dual_ne)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
-    signs = @unroll (F(vsphere.dual_ne[e, ij]) for e = 1:3)
+    signs = @unroll (vsphere.dual_ne[e, ij] for e = 1:3)
     return Fix(sum_weighted, (edges, signs))
 end
 
@@ -129,7 +128,7 @@ $(COV(:gradcov)) `gradcov` is numerically zero-curl.
 
 $(INB(:gradient, :gradcov))
 """
-@inl gradient(vsphere) = @lhs (; edge_left_right) = vsphere
+gradient(vsphere) = @lhs (; edge_left_right) = vsphere
 
 @inl gradient(vsphere, ij::Int) =
     Fix(get_difference, (vsphere.edge_left_right[1, ij], vsphere.edge_left_right[2, ij]))
@@ -149,7 +148,7 @@ $(CONTRA(:flux)) `flux` is numerically non-divergent.
 
 $(INB(:gradperp, :grad))
 """
-@inl gradperp(vsphere) = @lhs (; edge_down_up) = vsphere
+gradperp(vsphere) = @lhs (; edge_down_up) = vsphere
 @inl gradperp(vsphere, ij::Int) =
     Fix(get_difference, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
@@ -174,7 +173,7 @@ This may be done via the macro `@unroll` from `ManagedLoops`.
 
 $(INB(:TRiSK, :trisk))
 """
-@inl TRiSK(vsphere) = @lhs (; trisk, wee) = vsphere
+TRiSK(vsphere) = @lhs (; trisk, wee) = vsphere
 
 @inl TRiSK(vsphere, edge, deg) = Fix_TRiSK(sum_TRiSK1, vsphere, edge, deg)
 
