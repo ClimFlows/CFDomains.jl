@@ -75,6 +75,7 @@ end
 
 @testset "VoronoiOperators" begin
     q = randn(choices.precision, length(sphere.lon_i))
+    r = randn(choices.precision, length(sphere.lon_i))
     qe = randn(choices.precision, length(sphere.lon_e))
     ucov = randn(choices.precision, length(sphere.lon_e))
     tmp_i = similar(q)
@@ -93,6 +94,7 @@ end
     test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
     test_op(qe, ucov, tmp_e, Ops.EnergyTRiSK(sphere))
     test_op(q, ucov, tmp_i, Ops.DivCenteredFlux(sphere))
+    test_op(q, r, tmp_e, Ops.MulGradient(sphere))
     # LazyDiagonalOp
     test_norm_div(ucov, tmp_i, sphere)
 end

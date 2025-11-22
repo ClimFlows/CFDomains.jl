@@ -293,6 +293,29 @@ end
     loop_cell(action!, op, ∂q, Stencils.dot_grad, F, ∂divqF)
 end
 
+#========== Multiplied gradient ===========#
+
+struct MulGradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,2}
+    action!::Action # how to combine op(input) with output
+    edge_left_right::Matrix{Int32}
+    # for the adjoint
+    primal_deg::Vector{Int32}
+    primal_edge::Matrix{Int32}
+    primal_neighbour::Matrix{Int32}
+    primal_ne::Matrix{F}
+end
+
+@inline function apply_internal!(u, op::MulGradient, a, b)
+    loop_simple(op.action!, op, u, Stencils.mul_grad, a, b)
+    return a, b
+end
+
+@inline function apply_adj_internal!(∂u, op::MulGradient, ∂a, ∂b, (a,b))
+    action! = adj_action_in(op.action!)
+    loop_cell(action!, op, ∂a, Stencils.dot_grad, ∂u, b)
+    loop_cell(flip(action!), op, ∂b, Stencils.div_centered_flux, a, ∂u)
+end
+
 #=======================================================#
 #===================== Loop styles =====================#
 #=======================================================#
