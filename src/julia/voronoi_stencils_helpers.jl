@@ -40,6 +40,8 @@ Fix(fun, getter::Get, a, b) = Fix(fun, getter(a, b))
     @unroll (stencil[n, ij] for n = 1:$N)
 end
 
+const Ints{N} = NTuple{N, Int32}
+
 # for docstrings
 const OPTIONAL = "optional, returns only relevant fields as a named tuple"
 const WRT = "with respect to the unit sphere"
