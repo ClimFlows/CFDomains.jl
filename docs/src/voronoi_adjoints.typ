@@ -144,14 +144,6 @@
   table.header(
     [*Forward*], [*Backward*],
   ),
-  // Squared covector
-  $ K^i = (uvec dot uvec)^i = 1/2 sum_(e in E(i)) l_e/d_e uvec_e^2 $,
-  $ 
-    partial uvec^e = (2 partial K thin uvec )^e = rouge( ( partial K_i)_e med l_e/d_e uvec_e ) \
-  $,
-  // primal => dual
-  $ h^v = sum_(i in C(v)) cal(A)^(v i) h_i $,
-  $ partial h^i = rouge( sum_(v in V(i)) cal(A)^(i v) partial h_v) $,
   // curl
   $ zeta^v = (curl uvec)^v = sum_(e in E(v)) n_(v e)uvec_e $,
   $ partial uvec^e = rouge((-nabla^perp partial zeta)^e & = -sum_(v in V(e)) n_(e v) partial zeta_v )$,
@@ -159,22 +151,26 @@
   $ d^i = (div uvec)^i = sum_e n_(i e) uvec^e $,
   $ partial uvec_e= rouge( -(grad partial d)_e 
     = - nabla_e partial d_i) $,
-  // centered flux divergence
-  $ d^i = div (q uvec)^i = sum_(e in 
- E(i)) n_(i e) (q_i)_e uvec^e $, 
- $
-   partial uvec_e = -(q grad partial d)_e =& rouge( -(q_i)_e nabla_e partial d_i), \
-   partial q^i = - (uvec dot grad partial d)^i =& bleu( -sum_(e in E(i)) uvec^e nabla_e partial d_i )
- $, 
   // gradient
   $ uvec_e = (grad a)_e = sum_i n_(e i) a_i $,
   $ partial a^i = rouge(-(div partial uvec)^i =
           - sum_e n_(i e) partial uvec^e) $,
-  // multiplied gradient
-  $ uvec_e = (theta grad pi)_e = (rouge(theta_i))_e nabla_e bleu(pi_i) $,
+  // primal => dual
+  $ h^v = sum_(i in C(v)) cal(A)^(v i) h_i $,
+  $ partial h^i = rouge( sum_(v in V(i)) cal(A)^(i v) partial h_v) $,
+  [],[],
+  // Squared covector
+  $ K^i = (uvec dot uvec)^i = 1/2 sum_(e in E(i)) l_e/d_e uvec_e^2 $,
   $ 
-  partial theta^i = (partial uvec dot grad pi)^i = & rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ), \
-  partial pi^i = - (div theta uvec)^i = & bleu(-sum_(e in E(i)) n_(i e) (theta_i)_e partial uvec^e )
+    partial uvec^e = (2 partial K thin uvec )^e = rouge( ( partial K_i)_e med l_e/d_e uvec_e ) \
+  $,
+  [],[],
+  // Centered flux
+  $ Fvec^e = (h uvec)^e =  1/2 sum_(i in C(e))h_i med l_e/d_e uvec_e $,
+  $ 
+    partial uvec^e = (h partial Fvec)^e = rouge( 1/2 sum_(i in C(e))h_i med l_e/d_e partial Fvec_e ) \
+    partial h^i = (uvec dot partial Fvec)^i = rouge( 1/2 sum_(e in E(i)) l_e/d_e u_e partial Fvec_e ) \
+
   $,
   // TRiSK
   $ V_e = (q U^perp)_e
@@ -182,6 +178,19 @@
   $ 
   partial U_e = & (-q partial V^perp)_e = rouge(-1/2 sum_(e') w_(e e') (q_e+q_e') partial V^(e') ), \
   partial q^e =  & (U times partial V)^e = bleu( 1/2 sum_(e') w_(e e')(partial V^e  U^(e') - U^e partial V^(e'))) $,
+  // centered flux divergence
+  $ d^i = div (q uvec)^i = sum_(e in 
+ E(i)) n_(i e) (q_i)_e uvec^e $, 
+ $
+   partial uvec_e = -(q grad partial d)_e =& rouge( -(q_i)_e nabla_e partial d_i), \
+   partial q^i = - (uvec dot grad partial d)^i =& bleu( -sum_(e in E(i)) uvec^e nabla_e partial d_i )
+ $, 
+  // multiplied gradient
+  $ uvec_e = (a grad b)_e = (rouge(a_i))_e nabla_e bleu(b_i) $,
+  $ 
+  partial a^i = (partial uvec dot grad b)^i = & rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ), \
+  partial b^i = - (div a uvec)^i = & bleu(-sum_(e in E(i)) n_(i e) (a_i)_e partial uvec^e )
+  $,
  )
  #table(
   columns: (auto, auto),
@@ -303,6 +312,15 @@ $
   + sum_(e e') bleu( 1/2 w_(e e')(partial V^e  U^(e') - partial V^(e')  U^(e) )) delta q_e \
 $
 
+$
+  integral partial vvec dot (delta q med kvec cprod uvec) 
+  = 
+  integral delta q med kvec  dot ( uvec cprod  partial vvec  ) 
+$
+$
+  partial q = uvec cprod  partial vvec
+$
+
 == Divergence of centered flux
 
 $
@@ -320,16 +338,16 @@ $
 == Multiplied gradient
 
 $
-  (theta_i, pi_i) mapsto uvec_e = (theta grad pi)_e = (theta_i)_e nabla_e pi_i \
+  (a_i, b_i) mapsto uvec_e = (a grad b)_e = (a_i)_e nabla_e b_i \
   partial uvec^e mapsto 
-    partial theta^i = rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ), spc 
-    partial pi^i = bleu( -sum_(e in E(i)) (theta_i)_e n_(i e) partial uvec^e ), \
+    partial a^i = rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ), spc 
+    partial b^i = bleu( -sum_(e in E(i)) (a_i)_e n_(i e) partial uvec^e ), \
   \
   sum_e partial uvec^e delta uvec_e 
   = sum_e partial uvec^e 
-  (theta_i)_e nabla_e delta pi_i  
-  + sum_e partial uvec^e nabla_e pi_i (delta theta_i)_e \
-  = sum_i rouge( sum_(e in E(i)) partial uvec^e nabla_e pi_i ) delta theta_i
-    + sum_i bleu( -sum_(e in E(i)) (theta_i)_e n_(i e) partial uvec^e 
-   ) delta pi_i
+  (a_i)_e nabla_e delta b_i  
+  + sum_e partial uvec^e nabla_e b_i (delta a_i)_e \
+  = sum_i rouge( sum_(e in E(i)) partial uvec^e nabla_e b_i ) delta a_i
+    + sum_i bleu( -sum_(e in E(i)) (a_i)_e n_(i e) partial uvec^e 
+   ) delta b_i
 $

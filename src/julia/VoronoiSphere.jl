@@ -22,7 +22,7 @@ struct VoronoiSphere{
     @fields (Ai, lon_i, lat_i, Av, lon_v, lat_v)::VR
     @fields (le, de, le_de, lon_e, lat_e, angle_e)::VR
     @fields (primal_bounds_lon, primal_bounds_lat, dual_bounds_lon, dual_bounds_lat)::MR
-    @fields (Riv2, wee, edge_perp, primal_ne, dual_ne)::MR
+    @fields (Riv2, Aiv, Avi, wee, edge_perp, primal_ne, dual_ne)::MR
     primal_perot_cov::AR
     primal_grad3d::MP
     # computed
@@ -54,7 +54,7 @@ function VoronoiSphere(read_data::Function; prec = Float32)
         (:Ai, :lon_i, :lat_i, :Av, :lon_v, :lat_v)...,
         (:le, :de, :le_de, :lon_e, :lat_e, :angle_e)...,
         (:primal_bounds_lon, :primal_bounds_lat, :dual_bounds_lon, :dual_bounds_lat)...,
-        (:Riv2, :wee, :primal_perot_cov, :edge_perp, :primal_grad3d)...,
+        (:Riv2, :Aiv, :Avi, :wee, :primal_perot_cov, :edge_perp, :primal_grad3d)...,
     )
     data = StructDict(name => prec.(read_data(name)) for name in real_names)
 

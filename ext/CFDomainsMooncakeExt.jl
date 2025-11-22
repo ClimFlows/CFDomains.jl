@@ -31,12 +31,26 @@ function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,1}, finput::CoVec
     output, stencil, input = primal(foutput), primal(op), primal(finput)
     output0 = archive(output)    
     dout, din = tangent(foutput), tangent(finput)
+    extras = apply_internal!(output, stencil, input) # inputs needed by pullback, if any
     function apply!_pullback!!(::NoRData)
         restore!(output, output0) # undo mutation
-        apply_adj!(dout, stencil, din)
+        apply_adj!(dout, stencil, din, extras)
         return NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
     end
-    apply_internal!(output, stencil, input)
+    return zero_fcodual(nothing), apply!_pullback!!
+end
+
+function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,2}, finput1::CoVector{F}, finput2::CoVector{F}) where F
+#    @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput1) typeof(finput2)
+    output, stencil, input1, input2 = primal(foutput), primal(op), primal(finput1), primal(finput2)
+    output0 = archive(output)
+    ∂out, ∂in1,  ∂in2 = tangent(foutput), tangent(finput1), tangent(finput2)
+    extras = apply_internal!(output, stencil, input1, input2) # inputs needed by pullback, if any
+    function apply!_pullback!!(::NoRData)
+        restore!(output, output0) # undo mutation
+        apply_adj!(∂out, stencil, ∂in1, ∂in2, extras)
+        return NoRData(), NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
+    end
     return zero_fcodual(nothing), apply!_pullback!!
 end
 
@@ -47,7 +61,7 @@ end
 # the tangent `∂y` of `y`. The latter is a ReadableCDP (covector-diagonal product)
 # which reads from the tangent `∂x` of `x`. 
 # For this we need the `rrule!!` for `Diag` to return `∂y` as FData
-# which is then passed to the `rruel!!` for `op`.
+# which is then passed to the `rrule!!` for `op`.
 
 # ∂y[i] == diag[i] * ∂x[i]
 struct ReadableCDP{T, V<:AbstractVector{T}} <: AbstractVector{T}
