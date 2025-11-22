@@ -329,7 +329,11 @@ end
 #===================== Loop styles =====================#
 #=======================================================#
 
-@inline function loop_simple(action!, op, output::Vector, stencil, inputs...)
+rank(::AbstractArray{T,N}) where {T,N} = Val(N)
+
+loop_simple(action!, op, output, args...) = loop_simple(rank(output), action!, op, output, args...)
+
+@inline function loop_simple(::Val{1}, action!, op, output, stencil, inputs...)
     @inb for i in eachindex(output)
         st = stencil(op, i)
         @inbounds action!(output, st(inputs...), i) # FIXME
@@ -337,7 +341,7 @@ end
     return nothing
 end
 
-@inline function loop_simple(action!, op, output::Matrix, stencil, inputs...)
+@inline function loop_simple(::Val{2}, action!, op, output, stencil, inputs...)
     @inb for i in axes(output, 2)
         st = stencil(op, i)
         @simd ivdep for k in axes(output, 1)
@@ -347,7 +351,9 @@ end
     return nothing
 end
 
-@inline function loop_cell(action!, op, output::Vector, stencil, inputs...)
+loop_cell(action!, op, output, args...) = loop_cell(rank(output), action!, op, output, args...)
+
+@inline function loop_cell(::Val{1}, action!, op, output, stencil, inputs...)
     @inb for cell in eachindex(output)
         deg = op.primal_deg[cell]
         @unroll deg in 5:7 begin
@@ -358,7 +364,9 @@ end
     return nothing
 end
 
-@inline function loop_trisk(action!, op, output::Vector, stencil, inputs...)
+loop_trisk(action!, op, output, args...) = loop_trisk(rank(output), action!, op, output, args...)
+
+@inline function loop_trisk(::Val{1}, action!, op, output, stencil, inputs...)
     @inb for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
