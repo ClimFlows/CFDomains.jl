@@ -3,7 +3,7 @@ module VoronoiOperators
 using Base: @propagate_inbounds as @prop
 # using Base: @inbounds as @prop
 
-using ManagedLoops: @unroll
+using ManagedLoops: @unroll, @vec, @with
 
 import CFDomains.Stencils
 
@@ -79,10 +79,10 @@ adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
 #===================== VoronoiOperator{1,1} =====================#
 #================================================================#
 
-(op::VoronoiOperator{1,1})(output, input) = apply!(output, op, input)
+(op::VoronoiOperator{1,1})(output, mgr, input) = apply!(output, mgr, op, input)
 
-@inline function apply!(output, stencil::VoronoiOperator{1,1}, input) 
-    apply_internal!(output, stencil, input)
+@inline function apply!(output, mgr, stencil::VoronoiOperator{1,1}, input) 
+    apply_internal!(output, mgr, stencil, input)
     return nothing
 end
 
@@ -146,8 +146,8 @@ struct Divergence{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     edge_left_right::Matrix{Int32}
 end
 
-@inline function apply_internal!(output, op::Divergence, input)
-    loop_cell(op.action!, op, output, Stencils.div_form, input)
+@inline function apply_internal!(output, mgr, op::Divergence, input)
+    loop_cell(output, mgr, op.action!, op, Stencils.div_form, input)
     return nothing
 end
 
@@ -164,8 +164,8 @@ struct Curl{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
     edge_down_up::Matrix{Int32} # for gradperp
 end
 
-@inline function apply_internal!(output, op::Curl, input)
-    loop_simple(op.action!, op, output, Stencils.curl, input)
+@inline function apply_internal!(output, mgr, op::Curl, input)
+    loop_simple(output, mgr, op.action!, op, Stencils.curl, input)
     return nothing
 end
 
@@ -224,10 +224,10 @@ end
 #===================== VoronoiOperator{1,2} =====================#
 #================================================================#
 
-(op::VoronoiOperator{1,2})(output, in1, in2) = apply!(output, op, in1, in2)
+(op::VoronoiOperator{1,2})(output, mgr, in1, in2) = apply!(output, mgr, op, in1, in2)
 
-function apply!(output, stencil::VoronoiOperator{1,2}, in1, in2) 
-    apply_internal!(output, stencil, in1, in2)
+function apply!(output, mgr, stencil::VoronoiOperator{1,2}, in1, in2) 
+    apply_internal!(output, mgr, stencil, in1, in2)
     return nothing
 end
 
@@ -269,8 +269,8 @@ struct EnergyTRiSK{Action, F} <: VoronoiOperator{1,2}
     wee::Matrix{F}
 end
 
-@inline function apply_internal!(ucov, op::EnergyTRiSK, U, q)
-    loop_trisk(op.action!, op, ucov, Stencils.TRiSK, U, q)
+@inline function apply_internal!(ucov, mgr, op::EnergyTRiSK, U, q)
+    loop_trisk(ucov, mgr, op.action!, op, Stencils.TRiSK, U, q)
     return U, q
 end
 
@@ -329,11 +329,21 @@ end
 #===================== Loop styles =====================#
 #=======================================================#
 
-rank(::AbstractArray{T,N}) where {T,N} = Val(N)
 
-loop_simple(action!, op, output, args...) = loop_simple(rank(output), action!, op, output, args...)
+rank(::AbstractArray{T,N}) where {T,N} = Val(N) # to dispatch to the adequate loop
 
-@inline function loop_simple(::Val{1}, action!, op, output, stencil, inputs...)
+# for batched operations
+
+struct MergedIndex{I}
+    k::I # could be a SIMD.VecRange
+    stride::Int32
+end
+Base.@propagate_inbounds Base.getindex(a::DenseArray{T,3}, k::MergedIndex, ij) where T = getindex(a, k.k + (ij-1)*k.stride)
+Base.@propagate_inbounds Base.setindex!(a::DenseArray{T,3}, v, k::MergedIndex, ij) where T = setindex!(a, v, k.k + (ij-1)*k.stride)
+
+@inline loop_simple(output::AbstractArray, args...) = loop_simple(rank(output), output, args...)
+
+@inline function loop_simple(::Val{1}, output, mgr, action!, op, stencil, inputs...)
     @inb for i in eachindex(output)
         st = stencil(op, i)
         @inbounds action!(output, st(inputs...), i) # FIXME
@@ -341,19 +351,39 @@ loop_simple(action!, op, output, args...) = loop_simple(rank(output), action!, o
     return nothing
 end
 
-@inline function loop_simple(::Val{2}, action!, op, output, stencil, inputs...)
-    @inb for i in axes(output, 2)
-        st = stencil(op, i)
-        @simd ivdep for k in axes(output, 1)
-            action!(output, st(inputs..., k), k, i)
+@inline function loop_simple(::Val{2}, output, mgr, action!, op, stencil, inputs...)
+    @with mgr, 
+    let (krange, irange) = axes(output)
+        @inb for i in irange
+            st = stencil(op, i)
+            @vec for k in krange
+#            @simd ivdep for k in krange
+                action!(output, st(inputs..., k), k, i)
+            end
         end
     end
     return nothing
 end
 
-loop_cell(action!, op, output, args...) = loop_cell(rank(output), action!, op, output, args...)
+@inline function loop_simple(::Val{3}, output, mgr, action!, op, stencil, inputs...)
+    nl = Int32(size(output,1)*size(output,2)) # merged axis
+    @with mgr, 
+    let (lrange, irange) = (1:nl, axes(output, 3))
+        @inb for i in irange
+            st = stencil(op, i)
+            @vec for l in lrange
+#            @simd ivdep for l in lrange
+                k = MergedIndex(l, nl)
+                action!(output, st(inputs..., k), k, i)
+            end
+        end
+    end
+    return nothing
+end
 
-@inline function loop_cell(::Val{1}, action!, op, output, stencil, inputs...)
+loop_cell(output::AbstractArray, args...) = loop_cell(rank(output), output, args...)
+
+@inline function loop_cell(::Val{1}, output, mgr, action!, op, stencil, inputs...)
     @inb for cell in eachindex(output)
         deg = op.primal_deg[cell]
         @unroll deg in 5:7 begin
@@ -364,14 +394,86 @@ loop_cell(action!, op, output, args...) = loop_cell(rank(output), action!, op, o
     return nothing
 end
 
-loop_trisk(action!, op, output, args...) = loop_trisk(rank(output), action!, op, output, args...)
+@inline function loop_cell(::Val{2}, output, mgr, action!, op, stencil, inputs...)
+    @with mgr, 
+    let (krange, irange) = axes(output)
+        @inb for cell in irange
+            deg = op.primal_deg[cell]
+            @unroll deg in 5:7 begin
+                st = stencil(op, cell, Val(deg))
+                @vec for k in krange
+#                @simd ivdep for k in krange
+                    action!(output, st(inputs..., k), k, cell)
+                end
+            end
+        end
+    end
+    return nothing
+end
 
-@inline function loop_trisk(::Val{1}, action!, op, output, stencil, inputs...)
+@inline function loop_cell(::Val{3}, output, mgr, action!, op, stencil, inputs...)
+    nl = Int32(size(output,1)*size(output,2)) # merged axis
+    @with mgr, 
+    let (lrange, irange) = (1:nl, axes(output, 3))
+        @inb for cell in irange
+            deg = op.primal_deg[cell]
+            @unroll deg in 5:7 begin
+                st = stencil(op, cell, Val(deg))
+                @vec for l in lrange
+    #            @simd ivdep for l in lrange
+                    k = MergedIndex(l, nl)
+                    action!(output, st(inputs..., k), k, cell)
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+loop_trisk(output::AbstractArray, args...) = loop_trisk(rank(output), output, args...)
+
+@inline function loop_trisk(::Val{1}, output, mgr, action!, op, stencil, inputs...)
     @inb for edge in eachindex(output)
         deg = op.trisk_deg[edge]
         @unroll deg in 9:11 begin
             st = stencil(op, edge, Val(deg))
             action!(output, st(inputs...), edge)
+        end
+    end
+    return nothing
+end
+
+@inline function loop_trisk(::Val{2}, output, mgr, action!, op, stencil, inputs...)
+    @with mgr, 
+    let (krange, irange) = axes(output)
+        @inb for edge in irange
+            deg = op.trisk_deg[edge]
+            @unroll deg in 9:11 begin
+                st = stencil(op, edge, Val(deg))
+                @vec for k in krange
+#                @simd ivdep for k in krange
+                    action!(output, st(inputs..., k), k, edge)
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+@inline function loop_trisk(::Val{3}, output, mgr, action!, op, stencil, inputs...)
+    nl = Int32(size(output,1)*size(output,2)) # merged axis
+    @with mgr, 
+    let (lrange, irange) = (1:nl, axes(output, 3))
+        @inb for edge in irange
+            deg = op.trisk_deg[edge]
+            @unroll deg in 9:11 begin
+                st = stencil(op, edge, Val(deg))
+                @vec for l in lrange
+    #            @simd ivdep for l in lrange
+                    k = MergedIndex(l, nl)
+                    action!(output, st(inputs..., k), k, edge)
+                end
+            end
         end
     end
     return nothing

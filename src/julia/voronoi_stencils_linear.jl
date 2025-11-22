@@ -107,7 +107,7 @@ $(INB(:curl, :op))
 """
 curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
 
-@inl function curl(vsphere, ij::Int)
+@inl function curl(vsphere, ij)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
     signs = @unroll (vsphere.dual_ne[e, ij] for e = 1:3)
     return Fix(sum_weighted, (edges, signs))
@@ -195,6 +195,9 @@ end
 end
 
 @gen sum_weighted(cells::Ints{N}, weights, a, k) where N = quote
+#    @error "sum_weighted" cells weights k
+#    @error "sum_weighted" a[k, cells[1]]
+#    error()
     @unroll sum(weights[e] * a[k, cells[e]] for e = 1:$N)
 end
 
