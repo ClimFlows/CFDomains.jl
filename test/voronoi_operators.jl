@@ -11,7 +11,7 @@ end
 # 1 input
 
 function norm_op(f, tmp, op, app!)
-    app!(tmp, op, f)
+    app!(tmp, nothing, op, f)
     return LinAlg.norm(tmp)
 end
 
@@ -34,7 +34,7 @@ end
 # 2 inputs
 
 function norm_op(f, g, tmp, op, app!)
-    app!(tmp, op, f, g)
+    app!(tmp, nothing, op, f, g)
     return LinAlg.norm(tmp)
 end
 
@@ -45,7 +45,7 @@ function dnorm_op(t, f, df, g, tmp, op, app!) # directional derivative
 end
 
 function norm_op_switch(g, f, tmp, op, app!)
-    app!(tmp, op, f, g)
+    app!(tmp, nothing, op, f, g)
     return LinAlg.norm(tmp)
 end
 
@@ -74,7 +74,7 @@ end
 
 function norm_div(u, tmp, as_two_form, div_form!)
     tmp2 = as_two_form(tmp) # wraps `tmp` as a writable two-form
-    div_form!(tmp2, u)
+    div_form!(tmp2, nothing, u)
     return LinAlg.norm(tmp)
 end
 

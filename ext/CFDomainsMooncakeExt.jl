@@ -26,30 +26,31 @@ archive(y::WritableDVP) = archive(y.x)
 restore!(x,x0) = copy!(x, x0)
 restore!(y::WritableDVP, x0) = restore!(y.x, x0)
 
-function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,1}, finput::CoVector{F}) where F
+function apply!_rrule!!(foutput::CoVector{F}, fmgr::CoDual, op::CoOperator{1,1}, finput::CoVector{F}) where F
     # @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput)
-    output, stencil, input = primal(foutput), primal(op), primal(finput)
+    output, mgr, stencil, input = primal(foutput), primal(fmgr), primal(op), primal(finput)
     output0 = archive(output)    
     dout, din = tangent(foutput), tangent(finput)
-    extras = apply_internal!(output, stencil, input) # inputs needed by pullback, if any
+    extras = apply_internal!(output, mgr, stencil, input) # inputs needed by pullback, if any
     function apply!_pullback!!(::NoRData)
         restore!(output, output0) # undo mutation
-        apply_adj!(dout, stencil, din, extras)
-        return NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
+        apply_adj!(dout, mgr, stencil, din, extras)
+        # rdata for (apply!, output, mgr, op, input)
+        return NoRData(), NoRData(), NoRData(), NoRData(), NoRData()
     end
     return zero_fcodual(nothing), apply!_pullback!!
 end
 
-function apply!_rrule!!(foutput::CoVector{F}, op::CoOperator{1,2}, finput1::CoVector{F}, finput2::CoVector{F}) where F
+function apply!_rrule!!(foutput::CoVector{F}, fmgr::CoDual, op::CoOperator{1,2}, finput1::CoVector{F}, finput2::CoVector{F}) where F
 #    @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput1) typeof(finput2)
-    output, stencil, input1, input2 = primal(foutput), primal(op), primal(finput1), primal(finput2)
+    output, mgr, stencil, input1, input2 = map(primal, (foutput, fmgr, op, finput1, finput2))
     output0 = archive(output)
     ∂out, ∂in1,  ∂in2 = tangent(foutput), tangent(finput1), tangent(finput2)
-    extras = apply_internal!(output, stencil, input1, input2) # inputs needed by pullback, if any
+    extras = apply_internal!(output, mgr, stencil, input1, input2) # inputs needed by pullback, if any
     function apply!_pullback!!(::NoRData)
         restore!(output, output0) # undo mutation
-        apply_adj!(∂out, stencil, ∂in1, ∂in2, extras)
-        return NoRData(), NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
+        apply_adj!(∂out, mgr, stencil, ∂in1, ∂in2, extras)
+        return NoRData(), NoRData(), NoRData(), NoRData(), NoRData(), NoRData() # rdata for (apply!, output, op, input)
     end
     return zero_fcodual(nothing), apply!_pullback!!
 end

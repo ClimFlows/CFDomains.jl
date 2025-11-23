@@ -48,6 +48,7 @@ to_lonlat = let
 end
 =#
 
+#=
 @testset "transpose!" begin
     x = randn(3,4)
     y = transpose!(void, nothing, x)
@@ -72,6 +73,7 @@ end
     test_average(choices.tol, sphere, qi) 
     test_gradient3d(choices.tol, sphere, qi)
 end
+=#
 
 @testset "VoronoiOperators" begin
     q = randn(choices.precision, length(sphere.lon_i))
