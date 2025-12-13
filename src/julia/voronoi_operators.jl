@@ -7,17 +7,18 @@ using ManagedLoops: @unroll, @vec, @with
 
 import CFDomains.Stencils
 
-abstract type VoronoiOperator{In,Out} end
-
-@inline function (T::Type{<:VoronoiOperator})(sph, action! = set!)
-    _, names... = fieldnames(T)
-    fields = map(name->getproperty(sph, name), names)
-    return T(action!, fields...)
-end
-
 macro inb(expr)
     esc(:(@inbounds $expr))
 #    esc(expr)
+end
+
+abstract type VoronoiOperator{In,Out} end
+
+@inline (::Type{T})(sph) where { T<:VoronoiOperator } = T(sph, set!)
+
+@inline @generated function (::Type{T})(sph, action!::Action) where { T<:VoronoiOperator, Action }
+    fields = [ :( getproperty(sph, $(QuoteNode(name)))) for name in fieldnames(T)]
+    Expr(:call, T, :action!, fields[2:end]...)
 end
 
 #================== lazy diagonal operator ===============#
