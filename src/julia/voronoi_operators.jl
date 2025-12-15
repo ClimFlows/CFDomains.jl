@@ -116,6 +116,24 @@ end
     loop_cell(∂in, mgr, adj_action_in(op.action!), op, Stencils.average_vi_form, ∂out)
 end
 
+#========== dual => edge ==========#
+
+struct EdgeFromDual{Action} <: VoronoiOperator{1,1}
+    action!::Action # how to combine op(input) with output
+    edge_down_up:: Matrix{Int32}
+    # for the adjoint
+    dual_edge::Matrix{Int32}
+end
+
+@inline function apply_internal!(output, mgr, op::EdgeFromDual, input)
+    loop_simple(output, mgr, op.action!, op, Stencils.average_ve, input)
+    return nothing
+end
+
+@inline function apply_adj_internal!(∂out, mgr, op::EdgeFromDual, ∂in, ::Nothing)
+    loop_simple(∂in, mgr, adj_action_in(op.action!), op, Stencils.average_ev_form, ∂out)
+end
+
 #========== gradient ===========#
 
 struct Gradient{Action, F<:AbstractFloat} <: VoronoiOperator{1,1}
@@ -385,7 +403,7 @@ end
     return nothing
 end
 
-loop_cell(output::AbstractArray, args...) = loop_cell(rank(output), output, args...)
+@inline loop_cell(output::AbstractArray, args...) = loop_cell(rank(output), output, args...)
 
 @inline function loop_cell(::Val{1}, output, mgr, action!, op, stencil, inputs...)
     @inb for cell in eachindex(output)
@@ -434,7 +452,7 @@ end
     return nothing
 end
 
-loop_trisk(output::AbstractArray, args...) = loop_trisk(rank(output), output, args...)
+@inline loop_trisk(output::AbstractArray, args...) = loop_trisk(rank(output), output, args...)
 
 @inline function loop_trisk(::Val{1}, output, mgr, action!, op, stencil, inputs...)
     @with mgr,
