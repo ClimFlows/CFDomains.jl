@@ -83,12 +83,18 @@ function f1(cc, a, g)
     return c
 end
 
-function f2(cc, a, g) 
-    @lazy c(a, g) = a+g/2
+function f2(cc, a, b) 
+    @lazy c(a, b) = b*a^2
     for i in eachindex(cc)
         @inbounds cc[i] = c[i]
     end
     return c
+end
+
+function f3(d, op, a, b) 
+    @lazy c(a ; b) = b*a^2
+    op!(d, nothing, a)
+    return sum(d)
 end
 
 @testset "LazyExpressions" begin
@@ -111,6 +117,8 @@ end
     @test ucov ≈ ucov2
 
     c_ = f2(c, a, b)
+    @test f3(a,b) == sum(c)
+
     grad!(ucov, nothing, c_) # c_ is lazy
     grad!(ucov2, nothing, c)
     @test ucov ≈ ucov2

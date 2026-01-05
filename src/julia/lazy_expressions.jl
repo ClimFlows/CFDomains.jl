@@ -22,19 +22,22 @@ function expand_lazy(expr)
     :( $name = $lazy_expr(($fun), ($inputs), ($params)) )
 end
 
-const Arrays{N} = Tuple{Vararg{AbstractArray{<:Any, N}}} # a tuple of arrays of rank N
+const AA{N,T} = AbstractArray{T,N} # an array of rank N
+const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 
 function lazy_expr(fun::Fun, inputs::Arrays{N}, params) where {Fun, N}
-    LazyExpression{Fun, typeof(inputs), typeof(params)}(fun, inputs, params) 
+    T = promote_type((eltype(input) for input in inputs)...)
+    LazyExpression{T, N, Fun, typeof(inputs), typeof(params)}(fun, inputs, params)
 end
 
-struct LazyExpression{Fun, Inputs, Params}
+struct LazyExpression{T, N, Fun, Inputs<:Arrays{N}, Params<:Tuple} <: AbstractArray{T,N}
     fun::Fun
     inputs::Inputs
     params::Params
 end
+Base.size(lazy::LazyExpression) = size(lazy.inputs[1])
 
-@prop function Base.getindex(lazy::LazyExpression{T}, i) where T
+@prop function Base.getindex(lazy::LazyExpression, i)
     @boundscheck foreach(x->checkbounds(x,i), lazy.inputs)
     inputs = map(y-> (@inbounds y[i]), lazy.inputs)
     params = get(lazy.params, i)
