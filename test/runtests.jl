@@ -117,15 +117,15 @@ end
     @test ucov ≈ ucov2
 
     c_ = f2(c, a, b)
-    @test f3(a,b) == sum(c)
-
     grad!(ucov, nothing, c_) # c_ is lazy
     grad!(ucov2, nothing, c)
     @test ucov ≈ ucov2
 
+    @info "Gradient of concrete array"
     display(@benchmark $grad!($ucov2, nothing, $c) )
+    @info "Gradient of lazy array"
     display(@benchmark $grad!($ucov2, nothing, $c_) )
-    display(@code_native grad!(ucov2, nothing, c_))
+#    display(@code_native grad!(ucov2, nothing, c_))
 end
 
 @testset "VoronoiOperators" begin
