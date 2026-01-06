@@ -100,7 +100,7 @@ end
 function test_gradient3d(tol, sphere, qi)
     # q=sinϕ, |∇q|²=cos²ϕ  ⇒  |∇q|²+q²-1 = 0
     gradq = check_3D(gradient3d)(sphere, qi)
-    check = (dot(gq, gq) + q^2 - 1 for (q, gq) in zip(qi, gradq))
+    check = (dotprod(gq, gq) + q^2 - 1 for (q, gq) in zip(qi, gradq))
     return Linf(check) < tol
 end
 
@@ -112,4 +112,4 @@ function test_average(tol, sphere, qi)
     return Linf(qie, qve) < 2tol
 end
 
-dot(a::NTuple{3,F}, b::NTuple{3,F}) where {F} = @unroll sum(a[i] * b[i] for i = 1:3)
+dotprod(a::NTuple{3,F}, b::NTuple{3,F}) where {F} = @unroll sum(a[i] * b[i] for i = 1:3)

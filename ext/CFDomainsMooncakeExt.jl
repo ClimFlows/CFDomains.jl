@@ -14,6 +14,7 @@ using Mooncake: zero_fcodual, primal, tangent, lgetfield
 Mooncake.tangent_type(::Type{<:VoronoiOperator}) = NoTangent
 
 const CoVector{F} = CoDual{<:AbstractVector{F}, <:AbstractVector{F}}
+const CoArray{F} = CoDual{<:AbstractArray{F}, <:AbstractArray{F}}
 const CoNumber{F} = CoDual{F,NoFData}
 const CoOperator{A,B} = CoDual{<:VoronoiOperator{A,B}, NoFData}
 CoFunction(f) = CoDual{typeof(f), NoFData}
@@ -28,7 +29,7 @@ archive(y::WritableDVP) = archive(y.x)
 restore!(x,x0) = copy!(x, x0)
 restore!(y::WritableDVP, x0) = restore!(y.x, x0)
 
-function apply!_rrule!!(foutput::CoVector{F}, fmgr::CoDual, op::CoOperator{1,1}, finput::CoVector{F}) where F
+function apply!_rrule!!(foutput::CoArray{F}, fmgr::CoDual, op::CoOperator{1,1}, finput::CoArray{F}) where F
     # @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput)
     output, mgr, stencil, input = primal(foutput), primal(fmgr), primal(op), primal(finput)
     output0 = archive(output)    
@@ -43,7 +44,7 @@ function apply!_rrule!!(foutput::CoVector{F}, fmgr::CoDual, op::CoOperator{1,1},
     return zero_fcodual(nothing), apply!_pullback!!
 end
 
-function apply!_rrule!!(foutput::CoVector{F}, fmgr::CoDual, op::CoOperator{1,2}, finput1::CoVector{F}, finput2::CoVector{F}) where F
+function apply!_rrule!!(foutput::CoArray{F}, fmgr::CoDual, op::CoOperator{1,2}, finput1::CoArray{F}, finput2::CoArray{F}) where F
 #    @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput1) typeof(finput2)
     output, mgr, stencil, input1, input2 = map(primal, (foutput, fmgr, op, finput1, finput2))
     output0 = archive(output)
@@ -67,15 +68,18 @@ end
 # which is then passed to the `rrule!!` for `op`.
 
 # ∂y[i] == diag[i] * ∂x[i]
-struct ReadableCDP{T, V<:AbstractVector{T}} <: AbstractVector{T}
-    diag::V
+struct ReadableCDP{N,T,D<:AbstractVector,V<:AbstractArray{T,N}} <: AbstractArray{T,N}
+    diag::D
     ∂x::V
 end
-@prop Base.getindex(∂y::ReadableCDP, i) = ∂y.diag[i]*∂y.∂x[i]
-@prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
 Base.eachindex(∂y::ReadableCDP) = eachindex(∂y.∂x)
+Base.axes(∂y::ReadableCDP) = axes(∂y.∂x)
 
-Mooncake.tangent_type(::Type{<:WritableDVP{T,D,V}}) where {T,D,V} = ReadableCDP{T, V}
+@prop Base.getindex(∂y::ReadableCDP{1}, i)    = ∂y.diag[i]*∂y.∂x[i]
+@prop Base.getindex(∂y::ReadableCDP{2}, k, i) = ∂y.diag[i]*∂y.∂x[k,i]
+@prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
+
+Mooncake.tangent_type(::Type{<:WritableDVP{N,T,D,V}}) where {N,T,D,V} = ReadableCDP{N,T,D,V}
 Mooncake.rdata_type(::Type{<:ReadableCDP}) = NoRData
 Mooncake.fdata_type(::Type{T}) where {T<:ReadableCDP} = T
 
@@ -83,7 +87,7 @@ Mooncake.fdata_type(::Type{T}) where {T<:ReadableCDP} = T
 Mooncake.tangent_type(::Type{<:LazyDiagonalOp}) = NoTangent
 const CoLazyDiagonalOp{V} = CoDual{LazyDiagonalOp{V}, NoFData}
 Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{LazyDiagonalOp, Vararg}
-function Mooncake.rrule!!(op::CoLazyDiagonalOp, field::CoVector)
+function Mooncake.rrule!!(op::CoLazyDiagonalOp, field::CoArray)
     diag, x, ∂x = primal(op).diag, primal(field), tangent(field)
     return CoDual(WritableDVP(diag, x), ReadableCDP(diag, ∂x)), NoPullback(op, field)
 end

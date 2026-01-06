@@ -26,11 +26,10 @@ end
 struct LazyDiagonalOp{V<:AbstractVector}
     diag::V
 end
-struct WritableDVP{T, D<:AbstractVector, V<:AbstractVector{T}} <: AbstractVector{T}
+struct WritableDVP{N, T, D<:AbstractVector, V<:AbstractArray{T,N}} <: AbstractArray{T,N}
     diag::D
     x::V
 end
-
 """
     as_density = AsDensity(vsphere) # a `LazyDiagonalOp`
     density = as_density(scalar)    # a `WritableDVP` (diagonal-vector-product)
@@ -43,22 +42,24 @@ as an *output* argument.
 AsDensity(vsphere) = LazyDiagonalOp(vsphere.inv_Ai)
 (op::LazyDiagonalOp)(field) = WritableDVP(op.diag, field)
 
-# x[i] == diag[i] * y[i]
 Base.eachindex(y::WritableDVP) = eachindex(y.x)
-@prop Base.setindex!(y::WritableDVP, v, i) = y.x[i] = y.diag[i]*v
-@prop addto!(y::WritableDVP, v, i) = y.x[i] += y.diag[i]*v
-@prop subfrom!(y::WritableDVP, v, i) = y.x[i] -= y.diag[i]*v
+Base.axes(y::WritableDVP) = axes(y.x)
+
+# x[i] == diag[i] * y[i]
+@prop Base.setindex!(y::WritableDVP, v, i...) = y.x[i...] =  v*getdiag(y, i...)
+@prop addto!(y::WritableDVP, v, i...)         = y.x[i...] += v*getdiag(y, i...)
+@prop subfrom!(y::WritableDVP, v, i...)       = y.x[i...] -= v*getdiag(y, i...)
+@prop getdiag(d::WritableDVP{1}, i) = d.diag[i]
+@prop getdiag(d::WritableDVP{2}, _, i) = d.diag[i]
 
 #========== actions: what to do on the output of operators ===========#
 
-@prop set!(out, v, i)      = out[i] = v
-@prop setminus!(out, v, i) = out[i] = -v
-@prop addto!(out, v, i)    = out[i] += v
-@prop subfrom!(out, v, i)  = out[i] -= v
+@prop set!(out, v, i...)      = out[i...] = v
+@prop setminus!(out, v, i...) = out[i...] = -v
+@prop addto!(out, v, i...)    = out[i...] += v
+@prop subfrom!(out, v, i...)  = out[i...] -= v
 @prop setzero!(out, i)     = out[i] = 0
-@prop unchanged!(out, i)   = nothing
-
-@prop set!(out, v, k, i)   = out[k, i] = v
+@prop unchanged!(_, i)     = nothing
 
 # (out, in) := (op(in), in) => (∂out, ∂in) := (0, ∂in + opᵀ(∂out))
 adj_action_in(::typeof(set!)) = addto!
@@ -379,7 +380,6 @@ end
         @inb for i in irange
             st = stencil(op, i)
             @vec for k in krange
-#            @simd ivdep for k in krange
                 action!(output, st(inputs..., k), k, i)
             end
         end
@@ -394,7 +394,6 @@ end
         @inb for i in irange
             st = stencil(op, i)
             @vec for l in lrange
-#            @simd ivdep for l in lrange
                 k = MergedIndex(l, nl)
                 action!(output, st(inputs..., k), k, i)
             end
@@ -424,7 +423,6 @@ end
             @unroll deg in 5:7 begin
                 st = stencil(op, cell, Val(deg))
                 @vec for k in krange
-#                @simd ivdep for k in krange
                     action!(output, st(inputs..., k), k, cell)
                 end
             end
@@ -442,7 +440,6 @@ end
             @unroll deg in 5:7 begin
                 st = stencil(op, cell, Val(deg))
                 @vec for l in lrange
-    #            @simd ivdep for l in lrange
                     k = MergedIndex(l, nl)
                     action!(output, st(inputs..., k), k, cell)
                 end
@@ -476,7 +473,6 @@ end
             @unroll deg in 9:11 begin
                 st = stencil(op, edge, Val(deg))
                 @vec for k in krange
-#                @simd ivdep for k in krange
                     action!(output, st(inputs..., k), k, edge)
                 end
             end
@@ -494,7 +490,6 @@ end
             @unroll deg in 9:11 begin
                 st = stencil(op, edge, Val(deg))
                 @vec for l in lrange
-    #            @simd ivdep for l in lrange
                     k = MergedIndex(l, nl)
                     action!(output, st(inputs..., k), k, edge)
                 end
@@ -521,93 +516,3 @@ either directly from the main program or via some dependency.
 function pdv end
 
 end
-
-#=
-Shallow-water tendencies Variant 1: m=gh is a zero-form, ucov a 1-form
-
-# allocators
-on_cells(tmp) = similar!(m, tmp)
-on_edges(tmp) = similar!(ucov, tmp)
-on_duals(tmp) = similar!(sphere.Av, tmp)
-
-# constant inputs to lazy arrays must be given names
-metric = model.planet.radius^-2 # constant contravariant metric
-(; inv_Ai, fcov) = sphere
-
-# operators
-cflux! = CenteredFlux(sphere)
-square! = SquaredCoVector(sphere) # 1-form -> 2-form
-minus_grad! = Gradient(sphere, setminus!) # 0-form -> 1-form
-curl! = Curl(sphere) # 1-form -> 2-form
-primal_to_dual! = Average_iv(sphere) # 0-form -> 2-form
-dual_to_edge! = Average_ve(sphere) # 0-form -> 0-form
-substract_trisk! = TriskEnergy(sphere, subfrom!) # (2-form, 0-form at edges) -> 1-form
-as_two_form = AsTwoForm(sphere)
-
-# compute temporaries
-u2 = on_cells(tmp.K)
-U, qe = on_edges(tmp.U), on_edges(tmp.qe)
-zeta, mv = on_duals(tmp.zeta), on_duals(tmp.mv)
-
-@lazy ucontra(ucov) = ucov*radius_m2
-cflux!(mgr, U, ucontra, m)
-square!(mgr, u2, ucov)
-curl!(mgr, zetav, ucov)
-primal_to_dual!(mgr, mv, m)
-@lazy qv(zetav, mv ; fcov) = (zeta+fcov)/mv
-dual_to_edge!(mgr, qe, qv)
-@lazy B(m, u2 ; inv_Ai) = metric*(m + inv_Ai*u2/2)
-
-# compute tendencies
-ducov, dm = on_edges(dstate.ucov), on_cells(dstate.m)
-minus_grad!(mgr, ducov, B)
-substract_trisk!(mgr, ducov, U, qe)
-minus_div!(mgr, as_two_form(dm), U)
-
-=#
-
-#=
-
-Shallow-water tendencies Variant 2: m=gh is a two-form, ucov a 1-form
-
-# operators
-cflux = CenteredFlux(sphere)
-square = SquaredCoVector(sphere) # 1-form -> 2-form
-minus_grad = Gradient(sphere, setminus!) # 0-form -> 1-form
-curl = Curl(sphere) # 1-form -> 2-form
-primal_to_dual = Average_iv(sphere) # 0-form -> 2-form
-dual_to_edge = Average_ve(sphere) # 0-form -> 0-form
-substract_trisk = TriskEnergy(sphere, subfrom!) # (2-form, 0-form at edges) -> 1-form
-
-# constant inputs to lazy arrays must be given names
-metric = model.planet.radius^-2 # constant contravariant metric
-(; inv_Ai, fcov) = sphere
-
-# allocate temporaries
-on_cells(tmp) = similar!(tmp, m)
-on_edges(tmp) = similar!(tmp, ucov)
-on_duals(tmp) = similar!(tmp, sphere.Av)
-u2 = on_cells(tmp.K)
-U, qe = on_edges(tmp.U), on_edges(tmp.qe)
-zeta, mv = on_duals(tmp.zeta), on_duals(tmp.mv)
-
-# compute temporaries
-
-@lazy ucontra(ucov) = metric*ucov
-@lazy m0(m ; inv_Ai) = inv_Ai*m0
-cflux!(U, ucontra, m0)
-square!(u2, ucov)
-curl!(zetav, ucov)
-primal_to_dual!(mv, m)
-@lazy qv(zetav, mv ; fcov) = (zeta+fcov)/mv
-dual_to_edge!(qe, qv)
-@lazy B(m, u2 ; inv_Ai) = (metric*inv_Ai)*(m + u2/2)
-
-# compute tendencies
-ducov = on_edges(dstate.ucov)
-dm = on_cells(dstate.m)
-minus_grad!(ducov, B)
-substract_trisk!(ducov, U, qe)
-minus_div!(dm, U)
-
-=#

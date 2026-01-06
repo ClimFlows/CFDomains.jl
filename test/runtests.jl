@@ -1,7 +1,7 @@
 using ThreadPinning
 pinthreads(:cores)
 using NetCDF: ncread
-import LinearAlgebra as LinAlg
+using LinearAlgebra: dot, norm
 using BenchmarkTools
 using InteractiveUtils
 
@@ -75,6 +75,14 @@ end
     test_gradient3d(choices.tol, sphere, qi)
 end
 
+@testset "3D VoronoiOperators" begin
+    test_voronoi_ops(sphere, n -> randn(choices.precision, 16, n))
+end
+
+@testset "2D VoronoiOperators" begin
+    test_voronoi_ops(sphere, n -> randn(choices.precision, n))
+end
+
 function f1(cc, a, g) 
     @lazy c(a ; g) = a+g/2
     for i in eachindex(cc)
@@ -126,34 +134,6 @@ end
     @info "Gradient of lazy array"
     display(@benchmark $grad!($ucov2, nothing, $c_) )
 #    display(@code_native grad!(ucov2, nothing, c_))
-end
-
-@testset "VoronoiOperators" begin
-    q = randn(choices.precision, length(sphere.lon_i))
-    r = randn(choices.precision, length(sphere.lon_i))
-    qe = randn(choices.precision, length(sphere.lon_e))
-    ucov = randn(choices.precision, length(sphere.lon_e))
-    qv = randn(choices.precision, length(sphere.lon_v))
-    tmp_i = similar(q)
-    tmp_e = similar(q, length(sphere.lon_e))
-    tmp_v = similar(q, length(sphere.lon_v))
-
-    # Linear VoronoiOperator{1,1}
-    test_op(q, tmp_v, Ops.DualFromPrimal(sphere))
-    test_op(qv, tmp_e, Ops.EdgeFromDual(sphere))
-    test_op(ucov, tmp_v, Ops.Curl(sphere))
-    test_op(q, tmp_e, Ops.Gradient(sphere))
-    test_op(ucov, tmp_i, Ops.Divergence(sphere))
-    test_op(ucov, tmp_e, Ops.TRiSK(sphere))
-    # Quadratic VoronoiOperator{1,1}
-    test_op(ucov, tmp_i, Ops.SquaredCovector(sphere))
-    # Bilinear VoronoiOperator{1,2}
-    test_op(q, ucov, tmp_e, Ops.CenteredFlux(sphere))
-    test_op(qe, ucov, tmp_e, Ops.EnergyTRiSK(sphere))
-    test_op(q, ucov, tmp_i, Ops.DivCenteredFlux(sphere))
-    test_op(q, r, tmp_e, Ops.MulGradient(sphere))
-    # LazyDiagonalOp
-    test_norm_div(ucov, tmp_i, sphere)
 end
 
 # include("benchmark.jl")
