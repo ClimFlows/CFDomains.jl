@@ -34,6 +34,25 @@ average_iv_form(vsphere) = @lhs (; dual_vertex, Avi) = vsphere
 @inl average_iv_form((; dual_vertex, Avi), ij::Int) = Fix(sum_weighted, Get(ij, 3), dual_vertex, Avi)
 
 """
+    vsphere = average_vi_form(vsphere) # $OPTIONAL
+    avg = avg_vi_form(vsphere, cell, Val(N))
+    qi[cell] = avg(qv) # $(SINGLE(:qv))
+    qi[k, cell] = avg(qv, k)  # $(MULTI(:qv))
+
+Estimate scalar field integrated over $CELL of $SPH as an area-weighted sum of values sampled at vertices.
+$(DUALSCALAR(:qv))
+$(TWOFORM(:qi))
+
+$NEDGE
+
+$(INB(:average_vi_form, :avg))
+"""
+average_vi_form(vsphere) = @lhs (; Aiv, primal_vertex) = vsphere
+
+@inl average_vi_form((; Aiv, primal_vertex), ij::Int, N::Val) =
+    Fix(sum_weighted, Get(ij, N), primal_vertex, Aiv)
+
+"""
     vsphere = average_ve(vsphere) # $OPTIONAL
     avg = average_ve(vsphere, edge)
     qe[edge] = avg(qv)         # $(SINGLE(:qv))
@@ -52,23 +71,24 @@ average_ve(vsphere) = @lhs (; edge_down_up) = vsphere
     Fix(get_average, (vsphere.edge_down_up[1, ij], vsphere.edge_down_up[2, ij]))
 
 """
-    vsphere = average_vi_form(vsphere) # $OPTIONAL
-    avg = avg_vi_form(vsphere, cell, Val(N))
-    qi[cell] = avg(qv) # $(SINGLE(:qv))
-    qi[k, cell] = avg(qv, k)  # $(MULTI(:qv))
+    vsphere = average_ev_form(vsphere) # $OPTIONAL
+    avg = average_ev(vsphere, dual)
+    qv[dual] = avg(qe)         # $(SINGLE(:qv))
+    qv[k, dual] = avg(qe, k)   # $(MULTI(:qv))
 
-Estimate scalar field integrated over $CELL of $SPH as an area-weighted sum of values sampled at vertices.
-$(DUALSCALAR(:qv))
-$(TWOFORM(:qi))
+Estimate scalar field integrated over $DUAL of $SPH as the half-sum of values at edges.
 
-$NEDGE
+$(EDGE2FORM(:qe))
+$(DUAL2FORM(:qv))
 
-$(INB(:average_vi_form, :avg))
+$(INB(:average_ev_form, :avg))
 """
-average_vi_form(vsphere) = @lhs (; Aiv, primal_vertex) = vsphere
+average_ev_form(vsphere) = @lhs (; dual_edge) = vsphere
 
-@inl average_vi_form((; Aiv, primal_vertex), ij::Int, N::Val) =
-    Fix(sum_weighted, Get(ij, N), primal_vertex, Aiv)
+@inl function average_ev_form(vsphere, ij::Int)
+    edges = @unroll (vsphere.dual_edge[n,ij] for n=1:3)
+    Fix(get_half_sum, (edges,))
+end
 
 #========================= divergence (2-form) =======================#
 
@@ -107,7 +127,7 @@ $(INB(:curl, :op))
 """
 curl(vsphere) = @lhs (; Riv2, dual_edge, dual_ne) = vsphere
 
-@inl function curl(vsphere, ij::Int)
+@inl function curl(vsphere, ij)
     edges = @unroll (vsphere.dual_edge[e, ij] for e = 1:3)
     signs = @unroll (vsphere.dual_ne[e, ij] for e = 1:3)
     return Fix(sum_weighted, (edges, signs))
@@ -186,6 +206,9 @@ end
 
 @inl get_average(left, right, a) = (a[left] + a[right]) / 2
 @inl get_average(left, right, a, k) = (a[k, left] + a[k, right]) / 2
+
+@inl get_half_sum((a,b,c), z) = (z[a] + z[b] + z[c]) / 2
+@inl get_half_sum((a,b,c), z, k) = (z[k, a] + z[k, b] + z[k, c]) / 2
 
 @inl get_difference(left, right, q) = q[right] - q[left]
 @inl get_difference(left, right, q, k) = q[k, right] - q[k, left]

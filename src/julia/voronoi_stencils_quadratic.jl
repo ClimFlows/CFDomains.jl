@@ -236,6 +236,6 @@ end
     @unroll sum((weights[e] * U[edges[e]]) * (qe[edge] + qe[edges[e]]) for e = 1:$N) / 2
 end
 
-@gen sum_TRiSK1(edge, edges::Ints{N}, weights, U, qe::AbstractMatrix, k) where {N} = quote
+@gen sum_TRiSK1(edge, edges::Ints{N}, weights, U, qe::AbstractArray, k) where {N} = quote
     @unroll sum((weights[e] * U[k, edges[e]]) * (qe[k, edge] + qe[k, edges[e]]) for e = 1:$N) / 2
 end
