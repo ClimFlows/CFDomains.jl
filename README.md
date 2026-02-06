@@ -8,12 +8,16 @@
 
 ## Change Log
 
+### v0.4
+
+* breaking: `mass_level` expects an additional argument for horizontal position. This is to allow the argument `metric_cov` of `mass_coordinate` to be a `Vector` describing horizontal variations (#29)
+
 ### v0.3
 
 * breaking: `VoronoiSphere` expects additional data from mesh file reader (#11)
 
 * new: 
-  * 0.3.10: experimental Mooncake adjoints for Voronoi-mesh operators (#23)
+  * 0.3.10-0.3.14: Mooncake adjoints for Voronoi-mesh operators (#23-#29)
   * 0.3.9: Voronoi divergence yielding a two-form (#22)
   * 0.3.7: `zero_array` (#20)
   * 0.3.6: `transpose!` (#19)

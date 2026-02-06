@@ -40,21 +40,25 @@ abstract type MassCoordinate{N} <: VerticalCoordinate{N} end
     mcoord = mass_coordinate(pcoord::PressureCoordinate, metric_cov=1)
 
 Return the mass-based coordinate deduced from `pcoord` and
-the covariant metric factor `metric_cov`. This object `mcoord` can then
+the covariant metric factor `metric_cov`. `metric_cov` can be a scalar or 
+a vector. In the latter case `metric_cov[ij]) is the metric factor
+at horizontal position `ij`. The object `mcoord` can then
 be used with:
 
-    m = mass_level(k, masstot, vcoord)
+    m = mass_level(k, ij, masstot, mcoord)
 
 With `metric_cov==1`, masstot should be in Pa ( kg/m²⋅(m/s²) ). With `metric_cov`
-the covariant metric factor, `masstot` should be in kg⋅(m/s²).
+in m², `masstot` should be in kg⋅(m/s²). `m` has the same unit as `mass_tot`.
+If `masstot` is covariant (integral over a cell) then `metric_cov` should
+include the cell area.
 See also [`mass_level`](@ref).
 """
 function mass_coordinate end
 
 """
-    m = mass_level(k, masstot, mcoord::MassCoordinate{N})
+    m = mass_level(k, ij, masstot, mcoord::MassCoordinate{N})
 
-Return mass `m` in level *`k/2`* as prescribed
+Return mass `m` in level *`k/2`* and at horizontal position `ij`, as prescribed
 by vertical coordinate mcoord and total mass `masstot`.
 
 So-called full levels correspond to odd
@@ -98,10 +102,10 @@ Return `mcoord` itself, unchanged. Interim function for backwards compatibility.
 """
 mass_coordinate(mc::MassCoordinate) = mc
 
-# we accept the "metric_cov" argument, although it is not used
-mass_coordinate(vc::SigmaCoordinate{N,F}, metric_cov=nothing) where {N,F} = SigmaMassCoordinate{N,F}()
-
-mass_level(k, masstot, ::SigmaMassCoordinate{N}, metric_cov=nothing) where N = masstot/N
+# metric_cov is unused
+mass_coordinate(::SigmaCoordinate{N,F}, metric_cov) where {N,F} = SigmaMassCoordinate{N,F}()
+# position (k,ij) is unused
+mass_level(k, ij, masstot, ::SigmaMassCoordinate{N}, metric_cov) where N = masstot/N
 
 #============================== Hybrid coordinate =============================#
 
@@ -128,22 +132,26 @@ end
 
 pressure_level(k, ps, vc::HybridCoordinate) = vc.a[k+1] + ps*vc.b[k+1]
 
-struct HybridMassCoordinate{F, N, VF<:AbstractVector{F}} <: MassCoordinate{N}
-    metric_cov::F
+struct HybridMassCoordinate{F, N, VF<:AbstractVector{F}, A<:Union{F,AbstractVector{F}}} <: MassCoordinate{N}
+    metric_cov::A
     ptop::F
     a::VF
     b::VF
     v::Val{N}
 end
 
-mass_coordinate(vc::HybridCoordinate{F,N}, metric_cov::F) where {F,N} =
+mass_coordinate(vc::HybridCoordinate{F,N}, metric_cov) where {F,N} =
     HybridMassCoordinate(metric_cov, vc.ptop, vc.a, vc.b, Val(N))
 
-Base.@propagate_inbounds function mass_level(k, masstot, vc::HybridMassCoordinate)
+Base.@propagate_inbounds function mass_level(k, ij, masstot, vc::HybridMassCoordinate)
     # k==1 for first full level, k==3 for second full level, etc.
-    (; metric_cov, ptop, a, b) = vc
+    (; ptop, a, b) = vc
+    metric_cov = get(vc.metric_cov, ij)
     ps_cov = masstot + metric_cov*ptop
     p_down = metric_cov*a[k] + ps_cov*b[k]
     p_up = metric_cov*a[k+2] + ps_cov*b[k+2]
     return p_down-p_up
 end
+
+@inline get(metric::Number, _) = metric
+Base.@propagate_inbounds get(metric, ij) = metric[ij]
