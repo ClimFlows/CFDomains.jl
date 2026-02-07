@@ -105,7 +105,7 @@ mass_coordinate(mc::MassCoordinate) = mc
 # metric_cov is unused
 mass_coordinate(::SigmaCoordinate{N,F}, metric_cov) where {N,F} = SigmaMassCoordinate{N,F}()
 # position (k,ij) is unused
-mass_level(k, ij, masstot, ::SigmaMassCoordinate{N}, metric_cov) where N = masstot/N
+mass_level(k, ij, masstot, ::SigmaMassCoordinate{N}) where N = masstot/N
 
 #============================== Hybrid coordinate =============================#
 
