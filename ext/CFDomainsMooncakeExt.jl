@@ -3,21 +3,25 @@ module CFDomainsMooncakeExt
 using Base: @propagate_inbounds as @prop
 
 using CFDomains.LazyExpressions: LazyExpression, lazy_expr
-import CFDomains.VoronoiOperators as Ops
-using CFDomains.VoronoiOperators: apply!, apply_adj!, apply_internal!, VoronoiOperator
-using CFDomains.VoronoiOperators: LazyDiagonalOp, WritableDVP
+
+# import CFDomains.VoronoiOperators as Ops
+# using CFDomains.VoronoiOperators: apply!, apply_adj!, apply_internal!, VoronoiOperator
+using CFDomains.LazyOperators: LazyDiagonalOp, WritableDVP
 
 import Mooncake
 using Mooncake: CoDual, NoTangent, NoPullback, NoFData, NoRData
 using Mooncake: zero_fcodual, primal, tangent, lgetfield
 
-Mooncake.tangent_type(::Type{<:VoronoiOperator}) = NoTangent
+# Mooncake.tangent_type(::Type{<:VoronoiOperator}) = NoTangent
 
 const CoVector{F} = CoDual{<:AbstractVector{F}, <:AbstractVector{F}}
 const CoArray{F} = CoDual{<:AbstractArray{F}, <:AbstractArray{F}}
 const CoNumber{F} = CoDual{F,NoFData}
-const CoOperator{A,B} = CoDual{<:VoronoiOperator{A,B}, NoFData}
 CoFunction(f) = CoDual{typeof(f), NoFData}
+
+#=
+
+const CoOperator{A,B} = CoDual{<:VoronoiOperator{A,B}, NoFData}
 
 Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{typeof(apply!), Vararg}
 Mooncake.rrule!!(::CoFunction(apply!), fx::Vararg) = apply!_rrule!!(fx...)
@@ -58,6 +62,8 @@ function apply!_rrule!!(foutput::CoArray{F}, fmgr::CoDual, op::CoOperator{1,2}, 
     return zero_fcodual(nothing), apply!_pullback!!
 end
 
+=#
+
 # `y = Diag(x)` where `Diag` is a `LazyDiagonalOp` is a WritableDVP
 # (diagonal-vector-product), a write-only AbstractArray
 # to be passed to a VoronoiOperator `op` as an output argument.
@@ -77,7 +83,8 @@ Base.axes(∂y::ReadableCDP) = axes(∂y.∂x)
 
 @prop Base.getindex(∂y::ReadableCDP{1}, i)    = ∂y.diag[i]*∂y.∂x[i]
 @prop Base.getindex(∂y::ReadableCDP{2}, k, i) = ∂y.diag[i]*∂y.∂x[k,i]
-@prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
+
+# @prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
 
 Mooncake.tangent_type(::Type{<:WritableDVP{N,T,D,V}}) where {N,T,D,V} = ReadableCDP{N,T,D,V}
 Mooncake.rdata_type(::Type{<:ReadableCDP}) = NoRData
@@ -124,6 +131,7 @@ function Mooncake.rrule!!(colazy::CoFunction(lazy_expr), cofun::CoDual, coinputs
     return CoDual(lazy, ∂lazy), NoPullback(colazy, cofun, coinputs, coparams)
 end
 
+#=
 @prop Ops.subfrom!(out::TLazyExpression, v, i)  = Ops.addto!(out, -v, i)
 
 @prop function Ops.addto!(out::TLazyExpression, v, i)
@@ -133,6 +141,7 @@ end
     derivatives = Ops.pdv(fun, inputs...)
     addto_lazy(i, v, out.∂inputs, derivatives)
 end
+=#
 
 @prop geti(a::AbstractVector, i) = a[i]
 geti(a::Number, _) = a
