@@ -13,10 +13,6 @@ end
 # lightweight zero-filled arrays, used by CFHydrostatics and CFCompressible
 include("julia/zero_arrays.jl")
 
-# for zipped broadcast
-include("julia/Zippers.jl")
-using .Zippers: zipper
-
 #====================  Abstract Domain types ====================#
 
 """
@@ -96,25 +92,6 @@ function allocate_fields end
 @inline allocate_field(sym::Symbol, nq::Int, domain::AbstractDomain, F::Type, mgr) =
     allocate_field(Val(sym), nq, domain, F, mgr)
 
-# belongs to ManagedLoops
-# array(T, ::Union{Nothing, ManagedLoops.HostManager}, size...) = Array{T}(undef, size...)
-# array(T, mgr::Loops.DeviceBackend, size...) = Loops.to_device(Array{T}(undef, size...), mgr)
-# array(T, mgr::Loops.WrapperBackend, size...) = array(T, mgr.mgr, size...)
-
-#===================== Shell (multi-layer domain)=====================#
-
-#=
-struct DimX end # first horizontal dimension
-struct DimY end # second horizontal dimension
-struct DimXY end # unique dimension indexing horizontal points
-abstract type DimZ end # vertical dimension
-struct BottomUp <: DimZ end # vertical dimension, model levels increase from bottom to top
-struct TopDown <: DimZ end # vertical dimension, model levels increase from top to bottom
-
-struct Layout{Dims<:Tuple}
-    dims::Dims
-end
-=#
 
 """
     struct HVLayout{rank} end
@@ -189,15 +166,6 @@ allocate_field(val::Val, shell::Shell{nz}, F, mgr) where {nz} =
 allocate_field(val::Val, nq::Int, shell::Shell{nz}, F, mgr) where {nz} =
     allocate_shell(val, shell.layer, nz, nq, F, mgr)
 
-# Dubious functions
-# @inline Base.eltype(shell::Shell) = eltype(shell.layer)
-# @inline interior(data, domain::Shell) = data
-# @inline ijk( ::Type{Shell{nz, M}}, ij, k) where {nz, M} = (ij-1)*nz + k
-# @inline kplus( ::Type{Shell{nz, M}})      where {nz, M} = 1
-# @inline primal(domain::Shell{nz}) where nz = Shell(primal(domain.layer), nz)
-# @inline interior(x::AbstractDomain) = interior(typeof(x))
-# @inline interior(domain::Type) = domain
-
 """
     x_ji = transpose!(x_ji, mgr, x_ij)
     y_ji = transpose!(void, mgr, y_ij)
@@ -247,17 +215,15 @@ abstract type SpectralSphere <: SpectralDomain end
 
 abstract type UnstructuredDomain <: AbstractDomain end
 
+#=
 struct SubMesh{sym,Dom<:UnstructuredDomain} <: UnstructuredDomain
     domain::Dom
 end
 @inline SubMesh(sym::Symbol, dom::D) where {D} = SubMesh{sym,D}(dom)
+=#
 
-include("julia/voronoi_stencils.jl")
-include("julia/voronoi_operators.jl")
 include("julia/lazy_expressions.jl")
-include("julia/VoronoiSphere.jl")
-
-shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
+include("julia/lazy_operators.jl")
 
 #=================== Vertical coordinates ====================#
 

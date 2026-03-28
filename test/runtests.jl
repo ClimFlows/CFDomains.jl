@@ -15,19 +15,16 @@ using ManagedLoops: @with, @vec, @unroll
 using SHTnsSpheres: SHTnsSphere
 using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
 
-using CFDomains: CFDomains, Stencils, VoronoiSphere, transpose!, void
-using CFDomains.LazyExpressions: @lazy
-import CFDomains.VoronoiOperators as Ops
-
-# using ClimFlowsPlots.SphericalInterpolations: lonlat_interp
+using CFDomains: CFDomains, transpose!, void
+using CFDomains.LazyExpressions: @lazy, pdv
 
 using Test
 
 include("partial_derivative.jl")
-include("voronoi_operators.jl")
+# include("voronoi_operators.jl")
 
 include("zero_arrays.jl")
-include("voronoi.jl")
+# include("voronoi.jl")
 
 nlat = 16
 sph = SHTnsSphere(nlat)
@@ -35,9 +32,9 @@ sph = SHTnsSphere(nlat)
 
 choices = (precision = Float64, meshname = "uni.1deg.mesh.nc", tol=1e-3)
 
-reader = DYNAMICO_reader(ncread, DYNAMICO_meshfile(choices.meshname))
-sphere = VoronoiSphere(reader; prec = choices.precision)
-@info sphere
+# reader = DYNAMICO_reader(ncread, DYNAMICO_meshfile(choices.meshname))
+# sphere = VoronoiSphere(reader; prec = choices.precision)
+# @info sphere
 
 #=
 to_lonlat = let
@@ -57,6 +54,7 @@ end
     @test y == x'
 end
 
+#=
 @testset "VoronoiSphere" begin
     levels = 1:8
     qi = [z for k in levels, (x,y,z) in sphere.xyz_i]
@@ -82,6 +80,7 @@ end
 @testset "2D VoronoiOperators" begin
     test_voronoi_ops(sphere, n -> randn(choices.precision, n))
 end
+=#
 
 function f1(cc, a, g) 
     @lazy c(a ; g) = a+g/2
@@ -105,6 +104,7 @@ function f3(d, op, a, b)
     return sum(d)
 end
 
+#=
 @testset "LazyExpressions" begin
     F, ncell, nedge = choices.precision, length(sphere.lon_i), length(sphere.lon_e)
     a = randn(F, ncell);
@@ -135,5 +135,6 @@ end
     display(@benchmark $grad!($ucov2, nothing, $c_) )
 #    display(@code_native grad!(ucov2, nothing, c_))
 end
+=#
 
 # include("benchmark.jl")
