@@ -21,10 +21,10 @@ Modules = [CFDomains]
 Modules = [CFDomains.VerticalInterpolation]
 ```
 
-## Operators on Voronoi mesh
+## Lazy expressions and operators
 
 ```@autodocs
-Modules = [CFDomains.Stencils, CFDomains.VoronoiOperators]
+Modules = [CFDomains.LazyExpressions, CFDomains.LazyOperators]
 ```
 
 ## Virtual zero-filled arrays
