@@ -2,26 +2,33 @@ module LazyOperators
 
 using Base: @propagate_inbounds as @prop
 
-#=
+#========== actions: what to do on the output of operators ===========#
 
-using Base: @inbounds as @prop
-using ManagedLoops: @unroll, @vec, @with
-import CFDomains.Stencils
+@prop set!(out, v, i...)      = out[i...] = v
+@prop setminus!(out, v, i...) = out[i...] = -v
+@prop addto!(out, v, i...)    = out[i...] += v
+@prop subfrom!(out, v, i...)  = out[i...] -= v
+@prop setzero!(out, i)     = out[i] = 0
+@prop unchanged!(_, i)     = nothing
 
-macro inb(expr)
-    esc(:(@inbounds $expr))
-#    esc(expr)
-end
+# (out, in) := (op(in), in) => (∂out, ∂in) := (0, ∂in + opᵀ(∂out))
+adj_action_in(::typeof(set!)) = addto!
+adj_action_out(::typeof(set!)) = setzero!
 
-abstract type VoronoiOperator{In,Out} end
+# (out, in) := (-op(in), in) => (∂out, ∂in) := (0, ∂in - opᵀ(∂out))
+adj_action_in(::typeof(setminus!)) = subfrom!
+adj_action_out(::typeof(setminus!)) = setzero!
 
-@inline (::Type{T})(sph) where { T<:VoronoiOperator } = T(sph, set!)
+# (out, in) := (out + op(in), in) => (∂out, ∂in) := (∂out, ∂in + opᵀ(∂out))
+adj_action_in(::typeof(addto!)) = addto!
+adj_action_out(::typeof(addto!)) = unchanged!
 
-@inline @generated function (::Type{T})(sph, action!::Action) where { T<:VoronoiOperator, Action }
-    fields = [ :( getproperty(sph, $(QuoteNode(name)))) for name in fieldnames(T)]
-    Expr(:call, T, :action!, fields[2:end]...)
-end
-=#
+# (out, in) := (out - op(in), in)  => (∂out, ∂in) := (∂out, ∂in - opᵀ(∂out))
+adj_action_in(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
+adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
+
+flip(::typeof(addto!)) = subfrom!
+flip(::typeof(subfrom!)) = addto!
 
 #================== lazy diagonal operator ===============#
 
@@ -43,6 +50,14 @@ Base.axes(y::WritableDVP) = axes(y.x)
 @prop subfrom!(y::WritableDVP, v, i...)       = y.x[i...] -= v*getdiag(y, i...)
 @prop getdiag(d::WritableDVP{1}, i) = d.diag[i]
 @prop getdiag(d::WritableDVP{2}, _, i) = d.diag[i]
+
+# Used by adjoints, see VoronoiSpheresMooncakeExt
+# Keep a copy of output argument x.
+archive(x) = copy(x)
+archive(y::WritableDVP) = archive(y.x)
+# Restore the archived value of output argument x
+restore!(x,x0) = copy!(x, x0)
+restore!(y::WritableDVP, x0) = restore!(y.x, x0)
 
 #=
 

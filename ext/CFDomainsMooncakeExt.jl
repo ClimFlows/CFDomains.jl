@@ -3,10 +3,8 @@ module CFDomainsMooncakeExt
 using Base: @propagate_inbounds as @prop
 
 using CFDomains.LazyExpressions: LazyExpression, lazy_expr
-
-# import CFDomains.VoronoiOperators as Ops
-# using CFDomains.VoronoiOperators: apply!, apply_adj!, apply_internal!, VoronoiOperator
 using CFDomains.LazyOperators: LazyDiagonalOp, WritableDVP
+import CFDomains.LazyOperators as Ops
 
 import Mooncake
 using Mooncake: CoDual, NoTangent, NoPullback, NoFData, NoRData
@@ -26,12 +24,6 @@ const CoOperator{A,B} = CoDual{<:VoronoiOperator{A,B}, NoFData}
 Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{typeof(apply!), Vararg}
 Mooncake.rrule!!(::CoFunction(apply!), fx::Vararg) = apply!_rrule!!(fx...)
 
-# Keep a copy of output argument x.
-archive(x) = copy(x)
-archive(y::WritableDVP) = archive(y.x)
-# Restore the archived value of output argument x
-restore!(x,x0) = copy!(x, x0)
-restore!(y::WritableDVP, x0) = restore!(y.x, x0)
 
 function apply!_rrule!!(foutput::CoArray{F}, fmgr::CoDual, op::CoOperator{1,1}, finput::CoArray{F}) where F
     # @info "apply!_rrule!!" typeof(foutput) typeof(op) typeof(finput)
@@ -84,7 +76,7 @@ Base.axes(∂y::ReadableCDP) = axes(∂y.∂x)
 @prop Base.getindex(∂y::ReadableCDP{1}, i)    = ∂y.diag[i]*∂y.∂x[i]
 @prop Base.getindex(∂y::ReadableCDP{2}, k, i) = ∂y.diag[i]*∂y.∂x[k,i]
 
-# @prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
+@prop Ops.setzero!(∂y::ReadableCDP, i) = ∂y.∂x[i]=0
 
 Mooncake.tangent_type(::Type{<:WritableDVP{N,T,D,V}}) where {N,T,D,V} = ReadableCDP{N,T,D,V}
 Mooncake.rdata_type(::Type{<:ReadableCDP}) = NoRData
@@ -131,7 +123,6 @@ function Mooncake.rrule!!(colazy::CoFunction(lazy_expr), cofun::CoDual, coinputs
     return CoDual(lazy, ∂lazy), NoPullback(colazy, cofun, coinputs, coparams)
 end
 
-#=
 @prop Ops.subfrom!(out::TLazyExpression, v, i)  = Ops.addto!(out, -v, i)
 
 @prop function Ops.addto!(out::TLazyExpression, v, i)
@@ -141,7 +132,6 @@ end
     derivatives = Ops.pdv(fun, inputs...)
     addto_lazy(i, v, out.∂inputs, derivatives)
 end
-=#
 
 @prop geti(a::AbstractVector, i) = a[i]
 geti(a::Number, _) = a
