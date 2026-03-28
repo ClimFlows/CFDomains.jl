@@ -220,12 +220,6 @@ struct SubMesh{sym,Dom<:UnstructuredDomain} <: UnstructuredDomain
     domain::Dom
 end
 @inline SubMesh(sym::Symbol, dom::D) where {D} = SubMesh{sym,D}(dom)
-
-include("julia/voronoi_stencils.jl")
-include("julia/voronoi_operators.jl")
-include("julia/VoronoiSphere.jl")
-
-shell(nz, layer::VoronoiSphere) = Shell(nz, layer, VHLayout())
 =#
 
 include("julia/lazy_expressions.jl")
