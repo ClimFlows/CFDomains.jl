@@ -2,7 +2,7 @@ module CFDomainsMooncakeExt
 
 using Base: @propagate_inbounds as @prop
 
-using CFDomains.LazyExpressions: LazyExpression, lazy_expr
+using CFDomains.LazyExpressions: LazyExpression, lazy_expr, pdv
 using CFDomains.LazyOperators: LazyDiagonalOp, WritableDVP
 import CFDomains.LazyOperators as Ops
 
@@ -88,7 +88,7 @@ end
     params = get_tuple(out.params, i)
     inputs = get_tuple(out.inputs, i)
     fun(ins...) = out.fun(ins..., params...)
-    derivatives = Ops.pdv(fun, inputs...)
+    derivatives = pdv(fun, inputs...)
     addto_lazy(i, v, out.∂inputs, derivatives)
 end
 
