@@ -17,8 +17,14 @@ using ClimFlowsData: DYNAMICO_reader, DYNAMICO_meshfile
 
 using CFDomains: CFDomains, transpose!, void
 using CFDomains.LazyExpressions: @lazy, pdv
+using CFDomains.LazyOperators: adj_action_in, adj_action_out, subfrom!, unchanged!
 
 using Test
+
+@testset "Subtracting operator output" begin
+    @test adj_action_in(subfrom!) === subfrom!
+    @test adj_action_out(subfrom!) === unchanged!
+end
 
 include("partial_derivative.jl")
 # include("voronoi_operators.jl")

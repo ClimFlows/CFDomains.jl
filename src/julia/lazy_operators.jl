@@ -24,8 +24,10 @@ adj_action_in(::typeof(addto!)) = addto!
 adj_action_out(::typeof(addto!)) = unchanged!
 
 # (out, in) := (out - op(in), in)  => (∂out, ∂in) := (∂out, ∂in - opᵀ(∂out))
-adj_action_in(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
-adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
+adj_action_in(::typeof(subfrom!)) = subfrom!
+adj_action_out(::typeof(subfrom!)) = unchanged!
+adj_action_in(action::typeof(subfrom!), ∂in, i, ∂in_i) = adj_action_in(action)
+adj_action_out(action::typeof(subfrom!), ∂out, i) = adj_action_out(action)
 
 flip(::typeof(addto!)) = subfrom!
 flip(::typeof(subfrom!)) = addto!
