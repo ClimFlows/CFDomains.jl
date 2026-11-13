@@ -2,6 +2,7 @@ module CFDomainsEnzymeExt
 
 using Base: @propagate_inbounds as @prop
 
+import Enzyme
 using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated
 using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, parameter_indices
 import CFDomains.LazyExpressions: lazy_cotangent
@@ -9,10 +10,11 @@ import CFDomains.LazyOperators as LazyOps
 import ForwardDiff as FD
 
 "A write-through tangent view for a lazy expression."
-struct LazyCotangent{T,N,E,I,P} <: AbstractArray{T,N}
+struct LazyCotangent{T,N,E,I,P,F} <: AbstractArray{T,N}
     expr::E
     dinputs::I
     dparams::P
+    dfun::F
 end
 
 function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) where {T,N}
@@ -21,8 +23,10 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
     length(expr.params) == length(shadow.params) ||
         throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
-    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params)}(
-        expr, shadow.inputs, shadow.params,
+    return LazyCotangent{
+        T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params),typeof(shadow.fun),
+    }(
+        expr, shadow.inputs, shadow.params, shadow.fun,
     )
 end
 
@@ -31,26 +35,37 @@ lazy_cotangent(input::Duplicated{<:LazyExpression}) =
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
 
+const RealLazyExpression = LazyExpression{T,N,F,I,P} where {T<:Real,N,F,I,P}
 const LazyExpressionInput = Union{
-    Duplicated{<:LazyExpression},
-    MixedDuplicated{<:LazyExpression},
+    Duplicated{<:RealLazyExpression},
+    MixedDuplicated{<:RealLazyExpression},
 }
 
-struct LazyReadTape{I,P,C}
+struct LazyReadTape{I,P,C,V}
     input_partials::I
     param_partials::P
     children::C
+    values::V
 end
 
-is_differentiable_scalar(x) = x isa AbstractFloat || x isa Complex{<:AbstractFloat}
+has_separate_array_captures(fun, dfun) =
+    fieldcount(typeof(fun)) == fieldcount(typeof(dfun)) &&
+    any(i -> getfield(fun, i) isa AbstractArray &&
+             getfield(dfun, i) isa AbstractArray &&
+             getfield(fun, i) !== getfield(dfun, i), 1:fieldcount(typeof(fun)))
+
+@inline scaled_closure_call(fun, scale, args...) = scale * fun(args...)
+
+is_differentiable_scalar(x) = x isa AbstractFloat
 
 function scalar_value_and_partials(fun, values::Tuple)
     nactive = count(is_differentiable_scalar, values)
     if iszero(nactive)
-        return fun(values...), map(zero, values)
+        return fun(values...), ntuple(_ -> 0, length(values))
     end
 
-    value_type = promote_type(map(typeof, values)...)
+    active_values = filter(is_differentiable_scalar, values)
+    value_type = promote_type(map(typeof, active_values)...)
     positions = ntuple(length(values)) do i
         is_differentiable_scalar(values[i]) ?
         count(j -> is_differentiable_scalar(values[j]), 1:i) : 0
@@ -67,10 +82,13 @@ function scalar_value_and_partials(fun, values::Tuple)
 
     result = fun(dual_values...)
     if result isa FD.Dual
-        partials = ntuple(i -> iszero(positions[i]) ? zero(values[i]) : result.partials.values[positions[i]], length(values))
+        partials = ntuple(
+            i -> iszero(positions[i]) ? zero(value_type) : result.partials.values[positions[i]],
+            length(values),
+        )
         return FD.value(result), partials
     else
-        return result, map(zero, values)
+        return result, ntuple(_ -> zero(value_type), length(values))
     end
 end
 
@@ -85,7 +103,7 @@ end
     ninputs = length(inputs)
     input_partials = ntuple(i -> partials[i], ninputs)
     param_partials = ntuple(i -> partials[ninputs + i], length(params))
-    return value, LazyReadTape(input_partials, param_partials, children)
+    return value, LazyReadTape(input_partials, param_partials, children, (inputs..., params...))
 end
 
 @prop read_input_with_tape(input::AbstractArray, indices::Tuple) =
@@ -97,6 +115,13 @@ end
                              tape.input_partials, tape.children, value, indices...)
     accumulate_taped_params!(cotangent.expr.params, cotangent.dparams,
                              tape.param_partials, value, indices...)
+    if has_separate_array_captures(cotangent.expr.fun, cotangent.dfun)
+        Enzyme.autodiff(
+            Enzyme.Reverse, scaled_closure_call, Active,
+            Duplicated(cotangent.expr.fun, cotangent.dfun), Const(value),
+            map(Const, tape.values)...,
+        )
+    end
     return cotangent
 end
 

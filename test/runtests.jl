@@ -13,6 +13,8 @@ using Adapt
 import ForwardDiff
 import Enzyme
 
+weighted_closure(weight) = x -> x * weight[1]
+
 @testset "Subtracting operator output" begin
     @test adj_action_in(subfrom!) === subfrom!
     @test adj_action_out(subfrom!) === unchanged!
@@ -155,6 +157,15 @@ end
     @test dx_scaled == [3.0]
     @test dfactor == [2.0]
 
+    x_affine = [4.0]
+    dx_affine = zeros(size(x_affine))
+    coefficients = (2.0, 3.0)
+    @lazy affine(x_affine; coefficients) = coefficients[1] * x_affine + coefficients[2]
+    affine_shadow = LazyExpressions.lazy_expr(affine.fun, (dx_affine,), affine.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(affine, Ref(affine_shadow)))
+    @test dx_affine == [2.0]
+
     x_negative = [-1.0]
     dx_negative = zeros(size(x_negative))
     @lazy positive(x_negative) = x_negative > 0 ? x_negative : 0.0
@@ -173,6 +184,25 @@ end
                     Enzyme.MixedDuplicated(gated, Ref(gated_shadow)))
     @test dx_gated == [1.0]
     @test dflag == [false]
+
+    z = [1.0 + 2.0im]
+    dz = zeros(ComplexF64, 1)
+    @lazy energy(z) = abs2(z)
+    energy_shadow = LazyExpressions.lazy_expr(energy.fun, (dz,), energy.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(energy, Ref(energy_shadow)))
+    @test dz[1] ≈ 2 * z[1]
+
+    weight = [3.0]
+    dweight = [0.0]
+    x_weighted = [2.0]
+    dx_weighted = zeros(size(x_weighted))
+    weighted = LazyExpressions.lazy_expr(weighted_closure(weight), (x_weighted,), ())
+    weighted_shadow = LazyExpressions.lazy_expr(weighted_closure(dweight), (dx_weighted,), ())
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(weighted, Ref(weighted_shadow)))
+    @test dx_weighted == [3.0]
+    @test dweight == [2.0]
 
     counter = Ref(0)
     x_counted = [2.0]

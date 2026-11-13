@@ -11,8 +11,8 @@
 ### v0.6.1
 
 * new: Enzyme reverse mode differentiates direct reads from `LazyExpression`
-  values, including nested expressions, by accumulating into their input
-  shadows without a full-sized cotangent array.
+  values, including nested expressions, by accumulating into input, parameter,
+  and captured-array shadows without a full-sized cotangent array.
 
 ### v0.6
 
