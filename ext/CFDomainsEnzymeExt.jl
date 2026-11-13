@@ -3,21 +3,27 @@ module CFDomainsEnzymeExt
 using Base: @propagate_inbounds as @prop
 
 using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated
-using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, pdv
+using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, parameter_indices
 import CFDomains.LazyExpressions: lazy_cotangent
 import CFDomains.LazyOperators as LazyOps
+import ForwardDiff as FD
 
 "A write-through tangent view for a lazy expression."
-struct LazyCotangent{T,N,E,I} <: AbstractArray{T,N}
+struct LazyCotangent{T,N,E,I,P} <: AbstractArray{T,N}
     expr::E
     dinputs::I
+    dparams::P
 end
 
 function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) where {T,N}
     size(expr) == size(shadow) || throw(DimensionMismatch("lazy expression and shadow sizes differ"))
     length(expr.inputs) == length(shadow.inputs) ||
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
-    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs)}(expr, shadow.inputs)
+    length(expr.params) == length(shadow.params) ||
+        throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
+    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params)}(
+        expr, shadow.inputs, shadow.params,
+    )
 end
 
 lazy_cotangent(input::Duplicated{<:LazyExpression}) =
@@ -25,29 +31,61 @@ lazy_cotangent(input::Duplicated{<:LazyExpression}) =
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
 
-const LazyExpression1 = LazyExpression{T,N,F,Tuple{A},P} where {T,N,F,A,P}
-const LazyExpression2 = LazyExpression{T,N,F,Tuple{A,B},P} where {T,N,F,A,B,P}
-const LazyExpression3 = LazyExpression{T,N,F,Tuple{A,B,C},P} where {T,N,F,A,B,C,P}
-const SupportedLazyExpression = Union{LazyExpression1, LazyExpression2, LazyExpression3}
 const LazyExpressionInput = Union{
-    Duplicated{<:SupportedLazyExpression},
-    MixedDuplicated{<:SupportedLazyExpression},
+    Duplicated{<:LazyExpression},
+    MixedDuplicated{<:LazyExpression},
 }
 
-struct LazyReadTape{P,C}
-    partials::P
+struct LazyReadTape{I,P,C}
+    input_partials::I
+    param_partials::P
     children::C
 end
 
+is_differentiable_scalar(x) = x isa AbstractFloat || x isa Complex{<:AbstractFloat}
+
+function scalar_value_and_partials(fun, values::Tuple)
+    nactive = count(is_differentiable_scalar, values)
+    if iszero(nactive)
+        return fun(values...), map(zero, values)
+    end
+
+    value_type = promote_type(map(typeof, values)...)
+    positions = ntuple(length(values)) do i
+        is_differentiable_scalar(values[i]) ?
+        count(j -> is_differentiable_scalar(values[j]), 1:i) : 0
+    end
+    dual_values = ntuple(length(values)) do i
+        position = positions[i]
+        if iszero(position)
+            values[i]
+        else
+            partials = ntuple(j -> j == position ? one(value_type) : zero(value_type), nactive)
+            FD.Dual{typeof(fun)}(values[i], partials)
+        end
+    end
+
+    result = fun(dual_values...)
+    if result isa FD.Dual
+        partials = ntuple(i -> iszero(positions[i]) ? zero(values[i]) : result.partials.values[positions[i]], length(values))
+        return FD.value(result), partials
+    else
+        return result, map(zero, values)
+    end
+end
+
 @prop function read_with_tape(expr::LazyExpression, indices::Tuple)
+    @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     reads = map(input -> read_input_with_tape(input, indices), expr.inputs)
     inputs = map(first, reads)
     children = map(last, reads)
     params = map(param -> get(param, indices...), expr.params)
-    fun(args...) = expr.fun(args..., params...)
-    partials = pdv(fun, inputs...)
-    partials = partials isa Tuple ? partials : (partials,)
-    return fun(inputs...), LazyReadTape(partials, children)
+    fun(args...) = expr.fun(args...)
+    value, partials = scalar_value_and_partials(fun, (inputs..., params...))
+    ninputs = length(inputs)
+    input_partials = ntuple(i -> partials[i], ninputs)
+    param_partials = ntuple(i -> partials[ninputs + i], length(params))
+    return value, LazyReadTape(input_partials, param_partials, children)
 end
 
 @prop read_input_with_tape(input::AbstractArray, indices::Tuple) =
@@ -56,8 +94,21 @@ end
 
 @prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
     accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs,
-                             tape.partials, tape.children, value, indices...)
+                             tape.input_partials, tape.children, value, indices...)
+    accumulate_taped_params!(cotangent.expr.params, cotangent.dparams,
+                             tape.param_partials, value, indices...)
     return cotangent
+end
+
+@prop accumulate_taped_params!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
+
+@prop function accumulate_taped_params!((param, params...), (dparam, dparams...),
+                                        (partial, partials...), value, indices...)
+    if param isa AbstractArray && !(eltype(param) <: Integer)
+        param_indices = parameter_indices(Val(length(indices)), Val(ndims(dparam)), indices)
+        dparam[param_indices...] += value * partial
+    end
+    accumulate_taped_params!(params, dparams, partials, value, indices...)
 end
 
 @prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
@@ -117,10 +168,13 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     cartesian = cartesian_indices(expr, indices)
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
-    fun(args...) = expr.fun(args..., params...)
-    partials = pdv(fun, inputs...)
-    partials = partials isa Tuple ? partials : (partials,)
-    accumulate_inputs!(expr.inputs, cotangent.dinputs, partials, value, cartesian...)
+    fun(args...) = expr.fun(args...)
+    _, partials = scalar_value_and_partials(fun, (inputs..., params...))
+    ninputs = length(expr.inputs)
+    input_partials = ntuple(i -> partials[i], ninputs)
+    param_partials = ntuple(i -> partials[ninputs + i], length(expr.params))
+    accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
+    accumulate_taped_params!(expr.params, cotangent.dparams, param_partials, value, cartesian...)
     return cotangent
 end
 

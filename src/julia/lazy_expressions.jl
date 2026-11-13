@@ -58,12 +58,24 @@ end
     end
 end
 
+@inline function cartesian_indices(
+    lazy::LazyExpression, indices::Tuple{CartesianIndex{M},Vararg{Integer}},
+) where {M}
+    return cartesian_indices(lazy, (Tuple(first(indices))..., Base.tail(indices)...))
+end
+
 @prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
     cartesian = cartesian_indices(lazy, indices)
     @boundscheck foreach(x -> checkbounds(x, cartesian...), lazy.inputs)
     inputs = map(y -> (@inbounds y[cartesian...]), lazy.inputs)
     params = get(lazy.params, cartesian...)
     @inline lazy.fun(inputs..., params...)
+end
+
+@inline function Base.getindex(
+    lazy::LazyExpression, index::CartesianIndex, indices::Vararg{Integer,M},
+) where {M}
+    return getindex(lazy, Tuple(index)..., indices...)
 end
 
 @inline get(x::Tuple, indices...) = map(y -> get(y, indices...), x)

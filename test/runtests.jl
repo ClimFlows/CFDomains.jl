@@ -55,9 +55,10 @@ end
     y = reshape(Float64.(7:12), 2, 3)
     dx, dy = zeros(size(x)), zeros(size(y))
     factor = [10.0, 20.0, 30.0]
+    dfactor = zeros(size(factor))
     @lazy product(x, y; factor) = factor * x * y
     expr = product
-    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dy), expr.params)
+    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dy), (dfactor,))
     mixed = Enzyme.MixedDuplicated(expr, Ref(shadow))
     cotangent = LazyExpressions.lazy_cotangent(mixed)
 
@@ -67,6 +68,7 @@ end
     weight = 1.5 * factor[3]
     @test dx[2, 3] == weight * y[2, 3]
     @test dy[2, 3] == weight * x[2, 3]
+    @test dfactor[3] == 1.5 * x[2, 3] * y[2, 3]
     @test count(!iszero, dx) == 1
     @test count(!iszero, dy) == 1
 
@@ -76,6 +78,7 @@ end
     @test dy[2, 1] == factor[1] * x[2, 1]
     @test dx[1, 1] == 0.5 * factor[1] * y[1, 1]
     @test dy[1, 1] == 0.5 * factor[1] * x[1, 1]
+    @test dfactor[1] == x[2, 1] * y[2, 1] + 0.5 * x[1, 1] * y[1, 1]
 end
 
 @testset "Nested Enzyme LazyExpression cotangent" begin
@@ -106,10 +109,20 @@ end
     expr = square
     shadow = LazyExpressions.lazy_expr(expr.fun, (dx,), expr.params)
 
-    read_sum(expr) = expr[1, 1] + expr[CartesianIndex(2, 2)]
+    read_sum(expr) = expr[1, 1] + expr[2, 2]
     Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx == [2 * x[1, 1] 0; 0 2 * x[2, 2]]
+    @test expr[CartesianIndex(1), 2] == x[1, 2]^2
+    fill!(dx, 0)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[CartesianIndex(1), 2], Enzyme.Active,
+                    Enzyme.MixedDuplicated(expr, Ref(shadow)))
+    @test dx == [0 2 * x[1, 2]; 0 0]
+    fill!(dx, 0)
+    @test_throws BoundsError Enzyme.autodiff(
+        Enzyme.Reverse, expr -> expr[3, 1], Enzyme.Active,
+        Enzyme.MixedDuplicated(expr, Ref(shadow)),
+    )
 
     fill!(dx, 0)
     @lazy twice(x) = 2 * x
@@ -130,6 +143,46 @@ end
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx_float == [2.0]
     @test dmask == [0]
+
+    x_scaled = [2.0]
+    dx_scaled = zeros(size(x_scaled))
+    factor = [3.0]
+    dfactor = zeros(size(factor))
+    @lazy scaled(x_scaled; factor) = x_scaled * factor
+    scaled_shadow = LazyExpressions.lazy_expr(scaled.fun, (dx_scaled,), (dfactor,))
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(scaled, Ref(scaled_shadow)))
+    @test dx_scaled == [3.0]
+    @test dfactor == [2.0]
+
+    x_negative = [-1.0]
+    dx_negative = zeros(size(x_negative))
+    @lazy positive(x_negative) = x_negative > 0 ? x_negative : 0.0
+    positive_shadow = LazyExpressions.lazy_expr(positive.fun, (dx_negative,), positive.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(positive, Ref(positive_shadow)))
+    @test dx_negative == [0.0]
+
+    x_gated = [2.0]
+    dx_gated = zeros(size(x_gated))
+    flag = [true]
+    dflag = [false]
+    @lazy gated(x_gated, flag) = flag ? x_gated : -x_gated
+    gated_shadow = LazyExpressions.lazy_expr(gated.fun, (dx_gated, dflag), gated.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(gated, Ref(gated_shadow)))
+    @test dx_gated == [1.0]
+    @test dflag == [false]
+
+    counter = Ref(0)
+    x_counted = [2.0]
+    dx_counted = zeros(size(x_counted))
+    @lazy counted(x_counted) = (counter[] += 1; x_counted * counter[])
+    counted_shadow = LazyExpressions.lazy_expr(counted.fun, (dx_counted,), counted.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(counted, Ref(counted_shadow)))
+    @test counter[] == 1
+    @test dx_counted == [1.0]
 
     x_original = [1.25, -0.75]
     expected_dx = 2 * x_original[1]
@@ -155,4 +208,10 @@ end
     Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
                     Enzyme.MixedDuplicated(four_input_expr, Ref(four_input_shadow)))
     @test shadows == ([1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0])
+
+    nested_four = LazyExpressions.lazy_expr(twice.fun, (four_input_expr,), twice.params)
+    nested_four_shadow = LazyExpressions.lazy_expr(twice.fun, (four_input_shadow,), twice.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(nested_four, Ref(nested_four_shadow)))
+    @test shadows == ([3.0, 0.0], [3.0, 0.0], [3.0, 0.0], [3.0, 0.0])
 end
