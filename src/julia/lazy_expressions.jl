@@ -81,5 +81,17 @@ either directly from the main program or via some dependency.
 """
 function pdv end
 
+"""
+    lazy_cotangent(expr, shadow)
+
+Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
+mode. `shadow` is the Enzyme shadow expression; contributions written to the
+cotangent are accumulated in its input arrays without allocating a full-sized
+cotangent array. Expressions with one to three array inputs are supported.
+
+This method is available when both Enzyme and ForwardDiff are loaded.
+"""
+function lazy_cotangent end
+
 end # module
 
