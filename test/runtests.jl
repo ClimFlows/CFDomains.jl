@@ -130,4 +130,29 @@ end
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx_float == [2.0]
     @test dmask == [0]
+
+    x_original = [1.25, -0.75]
+    expected_dx = 2 * x_original[1]
+    dx_original = zeros(size(x_original))
+    @lazy square_to_mutate(x_original) = x_original * x_original
+    mutating_expr = square_to_mutate
+    mutating_shadow = LazyExpressions.lazy_expr(mutating_expr.fun, (dx_original,), mutating_expr.params)
+    read_then_mutate(expr) = begin
+        value = expr[1]
+        expr.inputs[1][1] = 0.0
+        value
+    end
+    Enzyme.autodiff(Enzyme.Reverse, read_then_mutate, Enzyme.Active,
+                    Enzyme.MixedDuplicated(mutating_expr, Ref(mutating_shadow)))
+    @test dx_original[1] == expected_dx
+
+    arrays = ntuple(_ -> [1.0, 2.0], 4)
+    shadows = ntuple(_ -> zeros(2), 4)
+    a, b, c, d = arrays
+    @lazy four_input_sum(a, b, c, d) = a + b + c + d
+    four_input_expr = LazyExpressions.lazy_expr(four_input_sum.fun, arrays, four_input_sum.params)
+    four_input_shadow = LazyExpressions.lazy_expr(four_input_sum.fun, shadows, four_input_sum.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(four_input_expr, Ref(four_input_shadow)))
+    @test shadows == ([1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0])
 end

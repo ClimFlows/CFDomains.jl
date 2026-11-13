@@ -25,10 +25,56 @@ lazy_cotangent(input::Duplicated{<:LazyExpression}) =
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
 
+const LazyExpression1 = LazyExpression{T,N,F,Tuple{A},P} where {T,N,F,A,P}
+const LazyExpression2 = LazyExpression{T,N,F,Tuple{A,B},P} where {T,N,F,A,B,P}
+const LazyExpression3 = LazyExpression{T,N,F,Tuple{A,B,C},P} where {T,N,F,A,B,C,P}
+const SupportedLazyExpression = Union{LazyExpression1, LazyExpression2, LazyExpression3}
 const LazyExpressionInput = Union{
-    Duplicated{<:LazyExpression},
-    MixedDuplicated{<:LazyExpression},
+    Duplicated{<:SupportedLazyExpression},
+    MixedDuplicated{<:SupportedLazyExpression},
 }
+
+struct LazyReadTape{P,C}
+    partials::P
+    children::C
+end
+
+@prop function read_with_tape(expr::LazyExpression, indices::Tuple)
+    reads = map(input -> read_input_with_tape(input, indices), expr.inputs)
+    inputs = map(first, reads)
+    children = map(last, reads)
+    params = map(param -> get(param, indices...), expr.params)
+    fun(args...) = expr.fun(args..., params...)
+    partials = pdv(fun, inputs...)
+    partials = partials isa Tuple ? partials : (partials,)
+    return fun(inputs...), LazyReadTape(partials, children)
+end
+
+@prop read_input_with_tape(input::AbstractArray, indices::Tuple) =
+    (@inbounds input[indices...], nothing)
+@prop read_input_with_tape(input::LazyExpression, indices::Tuple) = read_with_tape(input, indices)
+
+@prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
+    accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs,
+                             tape.partials, tape.children, value, indices...)
+    return cotangent
+end
+
+@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
+
+@prop function accumulate_taped_inputs!((input, inputs...), (dinput, dinputs...),
+                                        (partial, partials...), (child, children...),
+                                        value, indices...)
+    contribution = value * partial
+    if eltype(input) <: Integer
+        nothing
+    elseif input isa LazyExpression
+        accumulate_taped!(lazy_cotangent(input, dinput), child, contribution, indices...)
+    else
+        dinput[indices...] += contribution
+    end
+    accumulate_taped_inputs!(inputs, dinputs, partials, children, value, indices...)
+end
 
 @prop function EnzymeRules.augmented_primal(
     config::EnzymeRules.RevConfigWidth{1},
@@ -38,24 +84,21 @@ const LazyExpressionInput = Union{
     indices::Vararg{Const},
 )
     cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
-    value = if EnzymeRules.needs_primal(config)
-        getindex(input.val, cartesian...)
-    else
-        nothing
-    end
-    return EnzymeRules.AugmentedReturn(value, nothing, nothing)
+    value, tape = read_with_tape(input.val, cartesian)
+    primal = EnzymeRules.needs_primal(config) ? value : nothing
+    return EnzymeRules.AugmentedReturn(primal, nothing, tape)
 end
 
 @prop function EnzymeRules.reverse(
     config::EnzymeRules.RevConfigWidth{1},
     ::Const{typeof(Base.getindex)},
     derivative::Active,
-    tape,
+    tape::LazyReadTape,
     input::LazyExpressionInput,
     indices::Vararg{Const},
 )
     cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
-    LazyOps.addto!(lazy_cotangent(input), derivative.val, cartesian...)
+    accumulate_taped!(lazy_cotangent(input), tape, derivative.val, cartesian...)
     return ntuple(_ -> nothing, length(indices) + 1)
 end
 
