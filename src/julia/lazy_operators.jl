@@ -7,6 +7,14 @@ using Base: @propagate_inbounds as @prop
 @prop set!(out, v, i...)      = out[i...] = v
 @prop setminus!(out, v, i...) = out[i...] = -v
 @prop addto!(out, v, i...)    = out[i...] += v
+
+"""
+    subfrom!(out, value, indices...)
+
+Subtract `value` from the existing entry of `out` at `indices`.
+In reverse mode, the cotangent passes through to the previous output value
+and contributes with a minus sign to the subtracted value.
+"""
 @prop subfrom!(out, v, i...)  = out[i...] -= v
 @prop setzero!(out, i)     = out[i] = 0
 @prop unchanged!(_, i)     = nothing

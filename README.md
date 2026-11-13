@@ -8,6 +8,13 @@
 
 ## Change Log
 
+### v0.5
+
+* 0.5.2: fix reverse-mode dispatch for operators that subtract from an
+  existing output (`subfrom!`).
+* 0.5.0: move the Voronoi mesh and its operators to
+  [VoronoiSpheres.jl](https://github.com/ClimFlows/VoronoiSpheres.jl) (#32).
+
 ### v0.4
 
 * breaking: `mass_level` expects an additional argument for horizontal position. This is to allow the argument `metric_cov` of `mass_coordinate` to be a `Vector` describing horizontal variations (#29)
