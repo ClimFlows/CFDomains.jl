@@ -106,7 +106,7 @@ end
     expr = square
     shadow = LazyExpressions.lazy_expr(expr.fun, (dx,), expr.params)
 
-    read_sum(expr) = expr[1, 1] + expr[2, 2]
+    read_sum(expr) = expr[1, 1] + expr[CartesianIndex(2, 2)]
     Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx == [2 * x[1, 1] 0; 0 2 * x[2, 2]]

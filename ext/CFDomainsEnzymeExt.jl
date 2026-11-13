@@ -35,10 +35,11 @@ const LazyExpressionInput = Union{
     ::Const{typeof(Base.getindex)},
     ::Type{<:Active},
     input::LazyExpressionInput,
-    indices::Vararg{Const{<:Integer}},
+    indices::Vararg{Const},
 )
+    cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
     value = if EnzymeRules.needs_primal(config)
-        getindex(input.val, map(index -> index.val, indices)...)
+        getindex(input.val, cartesian...)
     else
         nothing
     end
@@ -51,9 +52,10 @@ end
     derivative::Active,
     tape,
     input::LazyExpressionInput,
-    indices::Vararg{Const{<:Integer}},
+    indices::Vararg{Const},
 )
-    LazyOps.addto!(lazy_cotangent(input), derivative.val, map(index -> index.val, indices)...)
+    cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
+    LazyOps.addto!(lazy_cotangent(input), derivative.val, cartesian...)
     return ntuple(_ -> nothing, length(indices) + 1)
 end
 
