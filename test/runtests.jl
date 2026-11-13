@@ -69,4 +69,11 @@ end
     @test dy[2, 3] == weight * x[2, 3]
     @test count(!iszero, dx) == 1
     @test count(!iszero, dy) == 1
+
+    LazyOperators.addto!(cotangent, 1.0, 2)
+    LazyOperators.addto!(cotangent, 0.5, first(eachindex(cotangent)))
+    @test dx[2, 1] == factor[1] * y[2, 1]
+    @test dy[2, 1] == factor[1] * x[2, 1]
+    @test dx[1, 1] == 0.5 * factor[1] * y[1, 1]
+    @test dy[1, 1] == 0.5 * factor[1] * x[1, 1]
 end

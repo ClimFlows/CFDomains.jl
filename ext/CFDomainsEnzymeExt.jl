@@ -3,7 +3,7 @@ module CFDomainsEnzymeExt
 using Base: @propagate_inbounds as @prop
 
 using Enzyme: MixedDuplicated
-using CFDomains.LazyExpressions: LazyExpression, get, pdv
+using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, pdv
 import CFDomains.LazyExpressions: lazy_cotangent
 import CFDomains.LazyOperators as LazyOps
 
@@ -35,12 +35,13 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
 
 @prop function accumulate!(cotangent::LazyCotangent, value, indices...)
     expr = cotangent.expr
-    inputs = map(input -> get(input, indices...), expr.inputs)
-    params = map(param -> get(param, indices...), expr.params)
+    cartesian = cartesian_indices(expr, indices)
+    inputs = map(input -> get(input, cartesian...), expr.inputs)
+    params = map(param -> get(param, cartesian...), expr.params)
     fun(args...) = expr.fun(args..., params...)
     partials = pdv(fun, inputs...)
     partials = partials isa Tuple ? partials : (partials,)
-    accumulate_inputs!(cotangent.dinputs, partials, value, indices...)
+    accumulate_inputs!(cotangent.dinputs, partials, value, cartesian...)
     return cotangent
 end
 
