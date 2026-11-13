@@ -8,7 +8,7 @@
 
 ## Change Log
 
-### v0.7
+### v0.6.1
 
 * new: Enzyme reverse mode differentiates direct reads from `LazyExpression`
   values, including nested expressions, by accumulating into their input
