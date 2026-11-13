@@ -10,6 +10,7 @@ using CFDomains.LazyOperators: adj_action_in, adj_action_out, subfrom!, unchange
 
 using Test
 using Adapt
+import ForwardDiff
 
 @testset "Subtracting operator output" begin
     @test adj_action_in(subfrom!) === subfrom!
