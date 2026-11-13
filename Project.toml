@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.5.2"
+version = "0.5.3"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -37,4 +37,4 @@ SHTnsSpheres = "9e5c175a-5132-4517-85a1-2957ec255f89"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Test", "Adapt"]
