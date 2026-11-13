@@ -77,3 +77,23 @@ end
     @test dx[1, 1] == 0.5 * factor[1] * y[1, 1]
     @test dy[1, 1] == 0.5 * factor[1] * x[1, 1]
 end
+
+@testset "Nested Enzyme LazyExpression cotangent" begin
+    LazyExpressions = CFDomains.LazyExpressions
+    LazyOperators = CFDomains.LazyOperators
+    x = reshape(Float64.(1:6), 2, 3)
+    dx = zeros(size(x))
+    @lazy square(x) = x * x
+    @lazy double(x) = 2 * x
+
+    inner = square
+    outer = LazyExpressions.lazy_expr(double.fun, (inner,), double.params)
+    inner_shadow = LazyExpressions.lazy_expr(inner.fun, (dx,), inner.params)
+    outer_shadow = LazyExpressions.lazy_expr(double.fun, (inner_shadow,), double.params)
+    mixed = Enzyme.MixedDuplicated(outer, Ref(outer_shadow))
+    cotangent = LazyExpressions.lazy_cotangent(mixed)
+
+    LazyOperators.addto!(cotangent, 1.0, 2, 3)
+    @test dx[2, 3] == 4 * x[2, 3]
+    @test count(!iszero, dx) == 1
+end

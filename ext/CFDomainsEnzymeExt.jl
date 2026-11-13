@@ -41,15 +41,21 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     fun(args...) = expr.fun(args..., params...)
     partials = pdv(fun, inputs...)
     partials = partials isa Tuple ? partials : (partials,)
-    accumulate_inputs!(cotangent.dinputs, partials, value, cartesian...)
+    accumulate_inputs!(expr.inputs, cotangent.dinputs, partials, value, cartesian...)
     return cotangent
 end
 
-@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, value, indices...) = nothing
+@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
 
-@prop function accumulate_inputs!((dinput, dinputs...), (partial, partials...), value, indices...)
-    dinput[indices...] += value * partial
-    accumulate_inputs!(dinputs, partials, value, indices...)
+@prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...), (partial, partials...), value, indices...)
+    contribution = value * partial
+    if input isa LazyExpression
+        cotangent = lazy_cotangent(input, dinput)
+        accumulate!(cotangent, contribution, indices...)
+    else
+        dinput[indices...] += contribution
+    end
+    accumulate_inputs!(inputs, dinputs, partials, value, indices...)
 end
 
 end
