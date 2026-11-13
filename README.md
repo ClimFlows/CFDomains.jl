@@ -10,6 +10,8 @@
 
 ### v0.5
 
+* 0.5.4: remove inactive tests for Voronoi operators now maintained in
+  VoronoiSpheres.jl and trim unused test dependencies.
 * 0.5.3: support multidimensional lazy expressions for layered fields.
 * 0.5.2: fix reverse-mode dispatch for operators that subtract from an
   existing output (`subfrom!`).
