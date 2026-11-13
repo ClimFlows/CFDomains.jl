@@ -40,7 +40,7 @@ Base.size(lazy::LazyExpression) = size(lazy.inputs[1])
 function adapt_structure(adapt_field, to, lazy::LazyExpression{T,N}) where {T,N}
     inputs = adapt_field(to, lazy.inputs)
     params = adapt_field(to, lazy.params)
-    LazyExpression{T,N,typeof(lazy.fun),typeof(inputs),typeof(params)}(lazy.fun, inputs, params)
+    lazy_expr(lazy.fun, inputs, params)
 end
 
 @prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
@@ -48,6 +48,8 @@ end
         indices
     elseif M == 1
         Tuple(CartesianIndices(size(lazy))[only(indices)])
+    elseif M > N && all(isone, indices[(N + 1):M])
+        ntuple(i -> indices[i], N)
     else
         throw(BoundsError(lazy, indices))
     end

@@ -20,6 +20,7 @@ using CFDomains.LazyExpressions: @lazy, pdv
 using CFDomains.LazyOperators: adj_action_in, adj_action_out, subfrom!, unchanged!
 
 using Test
+using Adapt
 
 @testset "Subtracting operator output" begin
     @test adj_action_in(subfrom!) === subfrom!
@@ -69,6 +70,16 @@ end
     @test scaled[2, 3] == factor[3] * field[2, 3]
     @test scaled[UInt32(2), UInt32(3)] == factor[3] * field[2, 3]
     @test scaled[4] == factor[2] * field[2, 2]
+
+    vector = [10.0, 20.0]
+    @lazy vector_field(vector) = vector
+    @test vector_field[2, 1] == vector_field[2]
+    @test vector_field[2, 1, 1] == vector_field[2]
+
+    @lazy identity_field(field) = field
+    adapted = Adapt.adapt(Array{Float32}, identity_field)
+    @test eltype(adapted) == Float32
+    @test adapted[2, 3] == Float32(field[2, 3])
 end
 
 #=
