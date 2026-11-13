@@ -2,7 +2,7 @@ module CFDomainsEnzymeExt
 
 using Base: @propagate_inbounds as @prop
 
-using Enzyme: MixedDuplicated
+using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated
 using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, pdv
 import CFDomains.LazyExpressions: lazy_cotangent
 import CFDomains.LazyOperators as LazyOps
@@ -20,8 +20,42 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
     return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs)}(expr, shadow.inputs)
 end
 
+lazy_cotangent(input::Duplicated{<:LazyExpression}) =
+    lazy_cotangent(input.val, input.dval)
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
+
+const LazyExpressionInput = Union{
+    Duplicated{<:LazyExpression},
+    MixedDuplicated{<:LazyExpression},
+}
+
+@prop function EnzymeRules.augmented_primal(
+    config::EnzymeRules.RevConfigWidth{1},
+    ::Const{typeof(Base.getindex)},
+    ::Type{<:Active},
+    input::LazyExpressionInput,
+    indices::Vararg{Const{<:Integer}},
+)
+    value = if EnzymeRules.needs_primal(config)
+        getindex(input.val, map(index -> index.val, indices)...)
+    else
+        nothing
+    end
+    return EnzymeRules.AugmentedReturn(value, nothing, nothing)
+end
+
+@prop function EnzymeRules.reverse(
+    config::EnzymeRules.RevConfigWidth{1},
+    ::Const{typeof(Base.getindex)},
+    derivative::Active,
+    tape,
+    input::LazyExpressionInput,
+    indices::Vararg{Const{<:Integer}},
+)
+    LazyOps.addto!(lazy_cotangent(input), derivative.val, map(index -> index.val, indices)...)
+    return ntuple(_ -> nothing, length(indices) + 1)
+end
 
 Base.size(cotangent::LazyCotangent) = size(cotangent.expr)
 Base.axes(cotangent::LazyCotangent) = axes(cotangent.expr)

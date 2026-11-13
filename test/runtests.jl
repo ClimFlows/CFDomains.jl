@@ -97,3 +97,25 @@ end
     @test dx[2, 3] == 4 * x[2, 3]
     @test count(!iszero, dx) == 1
 end
+
+@testset "Enzyme differentiates direct LazyExpression reads" begin
+    LazyExpressions = CFDomains.LazyExpressions
+    x = reshape([1.5, -2.0, 3.0, 0.5], 2, 2)
+    dx = zeros(size(x))
+    @lazy square(x) = x * x
+    expr = square
+    shadow = LazyExpressions.lazy_expr(expr.fun, (dx,), expr.params)
+
+    read_sum(expr) = expr[1, 1] + expr[2, 2]
+    Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
+                    Enzyme.MixedDuplicated(expr, Ref(shadow)))
+    @test dx == [2 * x[1, 1] 0; 0 2 * x[2, 2]]
+
+    fill!(dx, 0)
+    @lazy twice(x) = 2 * x
+    nested = LazyExpressions.lazy_expr(twice.fun, (expr,), twice.params)
+    nested_shadow = LazyExpressions.lazy_expr(twice.fun, (shadow,), twice.params)
+    Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
+                    Enzyme.MixedDuplicated(nested, Ref(nested_shadow)))
+    @test dx == [4 * x[1, 1] 0; 0 4 * x[2, 2]]
+end
