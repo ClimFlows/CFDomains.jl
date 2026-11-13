@@ -85,7 +85,9 @@ end
 
 @prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...), (partial, partials...), value, indices...)
     contribution = value * partial
-    if input isa LazyExpression
+    if eltype(input) <: Integer
+        nothing
+    elseif input isa LazyExpression
         cotangent = lazy_cotangent(input, dinput)
         accumulate!(cotangent, contribution, indices...)
     else

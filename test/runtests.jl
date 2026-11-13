@@ -118,4 +118,16 @@ end
     Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
                     Enzyme.MixedDuplicated(nested, Ref(nested_shadow)))
     @test dx == [4 * x[1, 1] 0; 0 4 * x[2, 2]]
+
+    x_float = [1.5]
+    mask = [2]
+    dx_float = zeros(size(x_float))
+    dmask = zeros(Int, size(mask))
+    @lazy masked_product(x_float, mask) = x_float * mask
+    expr = masked_product
+    shadow = LazyExpressions.lazy_expr(expr.fun, (dx_float, dmask), expr.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(expr, Ref(shadow)))
+    @test dx_float == [2.0]
+    @test dmask == [0]
 end
