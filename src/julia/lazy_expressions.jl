@@ -43,16 +43,23 @@ function adapt_structure(adapt_field, to, lazy::LazyExpression{T,N}) where {T,N}
     lazy_expr(lazy.fun, inputs, params)
 end
 
-@prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
-    cartesian = if M == N
-        indices
+@inline function cartesian_indices(lazy::LazyExpression{T,N}, indices::Tuple) where {T,N}
+    M = length(indices)
+    if M == N && all(index -> index isa Integer, indices)
+        return indices
+    elseif M == 1 && only(indices) isa CartesianIndex
+        return Tuple(only(indices))
     elseif M == 1
-        Tuple(CartesianIndices(size(lazy))[only(indices)])
+        return Tuple(CartesianIndices(size(lazy))[only(indices)])
     elseif M > N && all(isone, indices[(N + 1):M])
-        ntuple(i -> indices[i], N)
+        return ntuple(i -> indices[i], N)
     else
         throw(BoundsError(lazy, indices))
     end
+end
+
+@prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
+    cartesian = cartesian_indices(lazy, indices)
     @boundscheck foreach(x -> checkbounds(x, cartesian...), lazy.inputs)
     inputs = map(y -> (@inbounds y[cartesian...]), lazy.inputs)
     params = get(lazy.params, cartesian...)
@@ -80,6 +87,18 @@ Return the partial derivatives of scalar function `fun` evaluated at input `a, .
 either directly from the main program or via some dependency.
 """
 function pdv end
+
+"""
+    lazy_cotangent(expr, shadow)
+
+Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
+mode. `shadow` is the Enzyme shadow expression; contributions written to the
+cotangent are accumulated in its input arrays without allocating a full-sized
+cotangent array. Expressions with one to three array inputs are supported.
+
+This method is available when both Enzyme and ForwardDiff are loaded.
+"""
+function lazy_cotangent end
 
 end # module
 

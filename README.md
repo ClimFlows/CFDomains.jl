@@ -8,6 +8,12 @@
 
 ## Change Log
 
+### v0.6
+
+* new: Enzyme write-through cotangents for `LazyExpression` inputs to custom
+  reverse rules; contributions accumulate directly into the expression's
+  input shadows without a full-sized temporary array.
+
 ### v0.5
 
 * 0.5.4: remove inactive tests for Voronoi operators now maintained in
