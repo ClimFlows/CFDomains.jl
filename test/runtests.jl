@@ -60,6 +60,17 @@ end
     @test y == x'
 end
 
+@testset "Multidimensional LazyExpressions" begin
+    field = reshape(Float64.(1:6), 2, 3)
+    factor = [10.0, 20.0, 30.0]
+    @lazy scaled(field; factor) = factor * field
+
+    @test size(scaled) == size(field)
+    @test scaled[2, 3] == factor[3] * field[2, 3]
+    @test scaled[UInt32(2), UInt32(3)] == factor[3] * field[2, 3]
+    @test scaled[4] == factor[2] * field[2, 2]
+end
+
 #=
 @testset "VoronoiSphere" begin
     levels = 1:8

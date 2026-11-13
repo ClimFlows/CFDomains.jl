@@ -10,6 +10,7 @@
 
 ### v0.5
 
+* 0.5.3: support multidimensional lazy expressions for layered fields.
 * 0.5.2: fix reverse-mode dispatch for operators that subtract from an
   existing output (`subfrom!`).
 * 0.5.0: move the Voronoi mesh and its operators to

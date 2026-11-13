@@ -37,16 +37,34 @@ struct LazyExpression{T, N, Fun, Inputs<:Arrays{N}, Params<:Tuple} <: AbstractAr
 end
 Base.size(lazy::LazyExpression) = size(lazy.inputs[1])
 
-@prop function Base.getindex(lazy::LazyExpression, i)
-    @boundscheck foreach(x->checkbounds(x,i), lazy.inputs)
-    inputs = map(y-> (@inbounds y[i]), lazy.inputs)
-    params = get(lazy.params, i)
+function adapt_structure(adapt_field, to, lazy::LazyExpression{T,N}) where {T,N}
+    inputs = adapt_field(to, lazy.inputs)
+    params = adapt_field(to, lazy.params)
+    LazyExpression{T,N,typeof(lazy.fun),typeof(inputs),typeof(params)}(lazy.fun, inputs, params)
+end
+
+@prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
+    cartesian = if M == N
+        indices
+    elseif M == 1
+        Tuple(CartesianIndices(size(lazy))[only(indices)])
+    else
+        throw(BoundsError(lazy, indices))
+    end
+    @boundscheck foreach(x -> checkbounds(x, cartesian...), lazy.inputs)
+    inputs = map(y -> (@inbounds y[cartesian...]), lazy.inputs)
+    params = get(lazy.params, cartesian...)
     @inline lazy.fun(inputs..., params...)
 end
 
-@inline get(x::Tuple, i) = map(y->get(y, i), x)
-@inline get(x::AbstractVector, i) = @inbounds x[i]
-@inline get(x::Number, _) = x
+@inline get(x::Tuple, indices...) = map(y -> get(y, indices...), x)
+@inline get(x::AbstractArray{<:Any,M}, indices::Vararg{Integer,N}) where {M,N} =
+    @inbounds getindex(x, parameter_indices(Val(N), Val(M), indices)...)
+@inline get(x::Number, indices...) = x
+
+@inline parameter_indices(::Val{1}, ::Val{M}, indices) where {M} = indices
+@inline parameter_indices(::Val{N}, ::Val{M}, indices) where {N,M} =
+    indices[(N-M+1):N]
 
 #===================== automatic partial derivatives =================#
 
