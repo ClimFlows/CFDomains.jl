@@ -7,6 +7,14 @@ using Base: @propagate_inbounds as @prop
 @prop set!(out, v, i...)      = out[i...] = v
 @prop setminus!(out, v, i...) = out[i...] = -v
 @prop addto!(out, v, i...)    = out[i...] += v
+
+"""
+    subfrom!(out, value, indices...)
+
+Subtract `value` from the existing entry of `out` at `indices`.
+In reverse mode, the cotangent passes through to the previous output value
+and contributes with a minus sign to the subtracted value.
+"""
 @prop subfrom!(out, v, i...)  = out[i...] -= v
 @prop setzero!(out, i)     = out[i] = 0
 @prop unchanged!(_, i)     = nothing
@@ -24,8 +32,10 @@ adj_action_in(::typeof(addto!)) = addto!
 adj_action_out(::typeof(addto!)) = unchanged!
 
 # (out, in) := (out - op(in), in)  => (∂out, ∂in) := (∂out, ∂in - opᵀ(∂out))
-adj_action_in(::typeof(subfrom!), ∂in, i, ∂in_i) = subfrom!
-adj_action_out(::typeof(subfrom!), ∂out, i) = unchanged!
+adj_action_in(::typeof(subfrom!)) = subfrom!
+adj_action_out(::typeof(subfrom!)) = unchanged!
+adj_action_in(action::typeof(subfrom!), ∂in, i, ∂in_i) = adj_action_in(action)
+adj_action_out(action::typeof(subfrom!), ∂out, i) = adj_action_out(action)
 
 flip(::typeof(addto!)) = subfrom!
 flip(::typeof(subfrom!)) = addto!
