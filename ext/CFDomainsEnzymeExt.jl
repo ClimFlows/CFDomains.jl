@@ -100,14 +100,11 @@ function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_diff
         end
     end
 
-    result = try
-        fun(dual_values...)
-    catch err
-        if err isa MethodError
-            return enzyme_value_and_partials(fun, values, active)
-        end
-        rethrow()
-    end
+    # Select Enzyme before calling the scalar function when its method
+    # signature rejects Duals. Do not catch an internal MethodError and retry:
+    # a callable may have side effects before reaching the incompatible helper.
+    applicable(fun, dual_values...) || return enzyme_value_and_partials(fun, values, active)
+    result = fun(dual_values...)
     if result isa FD.Dual
         output_partials = ntuple(
             i -> iszero(positions[i]) ? zero(value_type) : result.partials.values[positions[i]],
@@ -127,8 +124,8 @@ end
     params = map(param -> get(param, indices...), expr.params)
     active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
-    fun(args...) = expr.fun(args...)
-    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
+    fun = expr.fun
+    value, partials = scalar_value_and_partials( (inputs..., params...), (active_inputs..., inactive_params...))
     input_partials = ntuple(i -> partials[i], length(inputs))
     return value, LazyReadTape(input_partials, children)
 end
@@ -162,6 +159,15 @@ end
     accumulate_taped_inputs!(inputs, dinputs, partials, children, value, indices...)
 end
 
+@inline expand_cartesian_indices(::Tuple{}) = ()
+@inline expand_cartesian_indices(indices::Tuple{CartesianIndex{M},Vararg{Any}}) where {M} =
+    (Tuple(first(indices))..., expand_cartesian_indices(Base.tail(indices))...)
+@inline expand_cartesian_indices(indices::Tuple{Any,Vararg{Any}}) =
+    (first(indices), expand_cartesian_indices(Base.tail(indices))...)
+
+@inline scalar_cartesian_indices(expr, indices::Tuple) =
+    cartesian_indices(expr, expand_cartesian_indices(indices))
+
 @prop function EnzymeRules.augmented_primal(
     config::EnzymeRules.RevConfigWidth{1},
     ::Const{typeof(Base.getindex)},
@@ -169,7 +175,7 @@ end
     input::LazyExpressionInput,
     indices::Vararg{Const},
 )
-    cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
+    cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
     cotangent = lazy_cotangent(input)
     value, tape = read_with_tape(input.val, cartesian, cotangent.dinputs)
     primal = EnzymeRules.needs_primal(config) ? value : nothing
@@ -204,7 +210,7 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     cartesian = cartesian_indices(expr, indices)
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
-    fun(args...) = expr.fun(args...)
+    fun = expr.fun
     active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
     _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
