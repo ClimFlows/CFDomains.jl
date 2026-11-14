@@ -3,10 +3,9 @@ module CFDomainsEnzymeExt
 using Base: @propagate_inbounds as @prop
 
 using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated, ReverseWithPrimal, autodiff
-using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get
+using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, pdv
 import CFDomains.LazyExpressions: lazy_cotangent
 import CFDomains.LazyOperators as LazyOps
-import ForwardDiff as FD
 
 """
     LazyCotangent
@@ -62,19 +61,8 @@ struct LazyReadTape{I}
     input_partials::I
 end
 
-# The @lazy contract guarantees homogeneous floating-point positional inputs.
-function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple)
-    ninputs = length(inputs)
-    dual_inputs = ntuple(i -> FD.Dual{typeof(fun)}(
-        inputs[i], ntuple(j -> i == j ? one(inputs[i]) : zero(inputs[i]), ninputs),
-    ), ninputs)
-    result = fun(dual_inputs..., params...)
-    if result isa FD.Dual
-        value = FD.value(result)
-        return value, result.partials.values
-    else
-        return result, ntuple(_ -> zero(result), ninputs)
-    end
+function scalar_value_and_partials(fun, inputs::Tuple)
+    return pdv(fun, inputs...; return_value=true)
 end
 
 @prop function read_with_tape(expr::LazyExpression{T}, indices::Tuple) where {T}
@@ -82,8 +70,8 @@ end
     inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
     params = map(param -> get(param, indices...), expr.params)
     callable = expr.fun
-    fun(args...) = callable(args...)
-    value, input_partials = scalar_value_and_partials(fun, inputs, params)
+    fun(args...) = callable(args..., params...)
+    value, input_partials = scalar_value_and_partials(fun, inputs)
     value = convert(T, value)
     input_partials = map(partial -> convert(T, partial), input_partials)
     return value, LazyReadTape(input_partials)
@@ -145,8 +133,8 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
     callable = expr.fun
-    fun(args...) = callable(args...)
-    _, input_partials = scalar_value_and_partials(fun, inputs, params)
+    fun(args...) = callable(args..., params...)
+    _, input_partials = scalar_value_and_partials(fun, inputs)
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
