@@ -152,7 +152,6 @@ end
     callable = expr.fun
     fun(args...) = callable(args...)
     value, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
-    T = eltype(expr)
     value = convert(T, value)
     input_partials = map(partial -> convert(T, partial), input_partials)
     return value, LazyReadTape(input_partials)
