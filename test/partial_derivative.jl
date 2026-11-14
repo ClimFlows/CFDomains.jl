@@ -30,7 +30,7 @@ Base.sincos(x::SIMD.Vec) = sin(x), cos(x)
 @testset "partial_derivative" begin
     let (a, b, c) = (1.0, 2.0, 3.0)
         @test first(pdv(sin, a)) ≈ sin(a)
-        @test last(pdv(sin, a)) ≈ cos(a)
+        @test only(last(pdv(sin, a))) ≈ cos(a)
         @test first(pdv(*, a, b)) ≈ a * b
         @test all(last(pdv(*, a, b)) .≈ (b,a))
     end
