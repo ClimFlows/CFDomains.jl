@@ -122,11 +122,11 @@ end
 #===================== automatic partial derivatives =================#
 
 """
-    fa = pdv(fun, a)
-    fa, fb = pdv(fun, a, b)
-    fa, fb, fc = pdv(fun, a, b, c)
+    value, partials = pdv(fun, a...)
 
-Return the partial derivatives of scalar function `fun` evaluated at input `a, ...`.
+Return the scalar value of `fun(a...)` and a tuple of its partial derivatives
+with respect to the inputs. This is implemented with ForwardDiff when it is
+loaded, either directly or through a dependency.
 *This function is implemented only when the package ForwardDiff is loaded*
 either directly from the main program or via some dependency.
 """
