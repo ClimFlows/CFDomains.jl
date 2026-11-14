@@ -16,7 +16,8 @@
   `params` as constants; pass arrays that need gradients as positional inputs.
   This rule targets homogeneous real floating-point fields. Mixed precision,
   complex values, and active arrays captured by the expression function are
-  not handled. Lazy expressions used as parameters are also unsupported.
+  not handled. A generic callable that accepts duals but calls a dual-incompatible
+  helper is unsupported. Lazy expressions used as parameters are also unsupported.
 
 ### v0.6
 
