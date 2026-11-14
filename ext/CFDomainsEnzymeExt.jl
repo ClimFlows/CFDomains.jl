@@ -133,8 +133,10 @@ end
     return value, LazyReadTape(input_partials, children)
 end
 
+# Input activity depends on the input scalar type, not on runtime aliasing
+# between primal and shadow arrays. This keeps the partial tuple concrete.
 @prop has_active_cotangent(input::AbstractArray, dinput) =
-    dinput !== input && !(eltype(input) <: Integer)
+    !(eltype(input) <: Integer)
 @prop has_active_cotangent(input::LazyExpression, dinput::LazyExpression) =
     any(map((child, dchild) -> has_active_cotangent(child, dchild), input.inputs, dinput.inputs))
 
