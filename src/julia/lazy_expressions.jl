@@ -109,8 +109,9 @@ cotangent are accumulated in its input arrays without allocating a full-sized
 cotangent array. Direct scalar reads support homogeneous real floating-point
 expressions with array-valued inputs and parameters. Mixed-precision or
 complex-valued expressions, scalar active parameters, and differentiable arrays
-captured by `fun` are not handled. Pass differentiable arrays as explicit lazy
-inputs or array-valued parameters.
+captured by `fun` are not handled. Parameters that are themselves
+`LazyExpression`s are also unsupported. Pass differentiable arrays as explicit
+lazy inputs or ordinary array-valued parameters.
 
 This method is available when both Enzyme and ForwardDiff are loaded.
 """

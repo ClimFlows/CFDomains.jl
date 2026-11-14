@@ -15,7 +15,8 @@
   and array-valued parameter shadows without a full-sized cotangent array.
   This rule targets homogeneous real floating-point fields; mixed precision,
   complex values, scalar active parameters, and active arrays captured by the
-  expression function are not handled.
+  expression function are not handled. Lazy expressions used as parameters are
+  also unsupported.
 
 ### v0.6
 

@@ -33,7 +33,8 @@ lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
 
 # Direct scalar reads support homogeneous real floating-point expressions.
 # Complex/non-floating and mixed-precision expressions, scalar active
-# parameters, and differentiable arrays captured by `fun` are out of scope.
+# parameters, LazyExpression-valued parameters, and differentiable arrays captured
+# by `fun` are out of scope.
 const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {
     T<:AbstractFloat,N,F,I<:Tuple{Vararg{AbstractArray{T}}},P,
 }
@@ -115,7 +116,9 @@ end
 
 @prop function accumulate_taped_params!((param, params...), (dparam, dparams...),
                                         (partial, partials...), value, indices...)
-    if param isa AbstractArray && !(eltype(param) <: Integer)
+    if dparam !== param && param isa LazyExpression
+        throw(ArgumentError("LazyExpression-valued parameters are not supported by the Enzyme rule"))
+    elseif dparam !== param && param isa AbstractArray && !(eltype(param) <: Integer)
         param_indices = parameter_indices(Val(length(indices)), Val(ndims(dparam)), indices)
         dparam[param_indices...] += value * partial
     end

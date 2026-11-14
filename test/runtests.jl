@@ -103,6 +103,7 @@ end
 
 @testset "Enzyme differentiates direct LazyExpression reads" begin
     LazyExpressions = CFDomains.LazyExpressions
+    LazyOperators = CFDomains.LazyOperators
     x = reshape([1.5, -2.0, 3.0, 0.5], 2, 2)
     dx = zeros(size(x))
     @lazy square(x) = x * x
@@ -154,6 +155,15 @@ end
                     Enzyme.MixedDuplicated(scaled, Ref(scaled_shadow)))
     @test dx_scaled == [3.0]
     @test dfactor == [2.0]
+
+    dx_shared = zeros(size(x_scaled))
+    shared_shadow = LazyExpressions.lazy_expr(scaled.fun, (dx_shared,), scaled.params)
+    shared_cotangent = LazyExpressions.lazy_cotangent(
+        Enzyme.MixedDuplicated(scaled, Ref(shared_shadow)),
+    )
+    LazyOperators.addto!(shared_cotangent, 1.0, 1)
+    @test dx_shared == [3.0]
+    @test factor == [3.0]
 
     x_negative = [-1.0]
     dx_negative = zeros(size(x_negative))
