@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.6.0"
+version = "0.6.1"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -33,6 +33,7 @@ ForwardDiff = "1"
 ManagedLoops = "0.1.11"
 PackageExtensionCompat = "1"
 SHTnsSpheres = "0.2.16"
+Mooncake = "0.4, 0.5"
 julia = "1.8"
 
 [extras]

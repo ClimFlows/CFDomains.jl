@@ -3,6 +3,20 @@ module LazyExpressions
 using MacroTools
 using Base:@propagate_inbounds as @prop
 
+"""
+    @lazy f(inputs...; params...) = expression
+
+Define a lazy array expression from positional array inputs and optional
+keyword parameters. Inputs must be floating-point arrays, not other lazy
+expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+result must have the same floating-point precision as the inputs.
+Automatic differentiation treats positional inputs as differentiable data and
+`params` as constants, including when a parameter is an array. Pass an array
+as a positional input when it should receive a cotangent.
+
+Violating these requirements has undefined behavior and may cause an error or
+incorrect gradients.
+"""
 macro lazy(expr)
     esc(expand_lazy(expr))
 end
@@ -25,11 +39,29 @@ end
 const AA{N,T} = AbstractArray{T,N} # an array of rank N
 const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 
+"""
+    lazy_expr(fun, inputs, params)
+
+Construct a lazy array expression. Inputs must be floating-point arrays, not lazy
+expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+result must have the same floating-point precision as the input arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
+are constants and do not receive cotangents. Violating these requirements has
+undefined behavior and may cause an error or incorrect gradients.
+"""
 function lazy_expr(fun::Fun, inputs::Arrays{N}, params) where {Fun, N}
     T = promote_type((eltype(input) for input in inputs)...)
     LazyExpression{T, N, Fun, typeof(inputs), typeof(params)}(fun, inputs, params)
 end
 
+"""
+A lazy array computed elementwise from `inputs` and `params`. Inputs are
+floating-point arrays, not lazy expressions. The scalar function must accept
+ForwardDiff `Dual` values, and its result must have the same floating-point
+precision as the inputs. Automatic differentiation treats
+array-valued `inputs` as differentiable and `params` as constants. Violating
+these requirements has undefined behavior and may cause an error or incorrect
+gradients.
+"""
 struct LazyExpression{T, N, Fun, Inputs<:Arrays{N}, Params<:Tuple} <: AbstractArray{T,N}
     fun::Fun
     inputs::Inputs
@@ -58,12 +90,24 @@ end
     end
 end
 
+@inline function cartesian_indices(
+    lazy::LazyExpression, indices::Tuple{CartesianIndex{M},Vararg{Integer}},
+) where {M}
+    return cartesian_indices(lazy, (Tuple(first(indices))..., Base.tail(indices)...))
+end
+
 @prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
     cartesian = cartesian_indices(lazy, indices)
     @boundscheck foreach(x -> checkbounds(x, cartesian...), lazy.inputs)
     inputs = map(y -> (@inbounds y[cartesian...]), lazy.inputs)
     params = get(lazy.params, cartesian...)
     @inline lazy.fun(inputs..., params...)
+end
+
+@inline function Base.getindex(
+    lazy::LazyExpression, index::CartesianIndex, indices::Vararg{Integer,M},
+) where {M}
+    return getindex(lazy, Tuple(index)..., indices...)
 end
 
 @inline get(x::Tuple, indices...) = map(y -> get(y, indices...), x)
@@ -78,11 +122,11 @@ end
 #===================== automatic partial derivatives =================#
 
 """
-    fa = pdv(fun, a)
-    fa, fb = pdv(fun, a, b)
-    fa, fb, fc = pdv(fun, a, b, c)
+    value, partials = pdv(fun, a...)
 
-Return the partial derivatives of scalar function `fun` evaluated at input `a, ...`.
+Return the scalar value of `fun(a...)` and a tuple of its partial derivatives
+with respect to the inputs. This is implemented with ForwardDiff when it is
+loaded, either directly or through a dependency.
 *This function is implemented only when the package ForwardDiff is loaded*
 either directly from the main program or via some dependency.
 """
@@ -94,11 +138,17 @@ function pdv end
 Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
 mode. `shadow` is the Enzyme shadow expression; contributions written to the
 cotangent are accumulated in its input arrays without allocating a full-sized
-cotangent array. Expressions with one to three array inputs are supported.
+cotangent array. Direct scalar reads support homogeneous real floating-point
+array inputs. Inputs must not themselves be lazy expressions, and the scalar
+result must preserve input precision; violations have undefined behavior and
+may cause an error or incorrect gradients. Parameters are constants and do not
+receive cotangents. A `LazyExpression` stored in `params` is unsupported.
+Mixed-precision or complex-valued expressions, and differentiable arrays
+captured by `fun`, are not handled. The scalar function must accept ForwardDiff `Dual` values.
+Pass differentiable arrays as explicit lazy inputs.
 
 This method is available when both Enzyme and ForwardDiff are loaded.
 """
 function lazy_cotangent end
 
 end # module
-
