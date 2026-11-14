@@ -145,7 +145,7 @@ function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_f
     end
 end
 
-@prop function read_with_tape(expr::LazyExpression, indices::Tuple)
+@prop function read_with_tape(expr::LazyExpression{T}, indices::Tuple) where {T}
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
     params = map(param -> get(param, indices...), expr.params)
