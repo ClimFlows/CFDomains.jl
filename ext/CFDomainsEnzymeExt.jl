@@ -109,7 +109,7 @@ end
     input::LazyExpressionInput,
     indices::Vararg{Const},
 )
-    cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
+    cartesian = cartesian_indices(input.val, expand_cartesian_indices(map(index -> index.val, indices)))
     tape = tape::LazyReadTape
     cotangent = lazy_cotangent(input)
     accumulate_inputs!(cotangent.expr.inputs, cotangent.dinputs, tape.input_partials,
