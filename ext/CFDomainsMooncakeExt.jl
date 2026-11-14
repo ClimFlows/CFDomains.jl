@@ -88,7 +88,7 @@ end
     params = get_tuple(out.params, i)
     inputs = get_tuple(out.inputs, i)
     fun(ins...) = out.fun(ins..., params...)
-    derivatives = pdv(fun, inputs...)
+    _, derivatives = pdv(fun, inputs...)
     addto_lazy(i, v, out.∂inputs, derivatives)
 end
 
