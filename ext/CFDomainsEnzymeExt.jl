@@ -125,7 +125,7 @@ end
     active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
     fun = expr.fun
-    value, partials = scalar_value_and_partials( (inputs..., params...), (active_inputs..., inactive_params...))
+    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
     input_partials = ntuple(i -> partials[i], length(inputs))
     return value, LazyReadTape(input_partials, children)
 end
