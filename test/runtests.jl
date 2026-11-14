@@ -80,6 +80,14 @@ end
     @test factor == [10.0, 20.0, 30.0]
 end
 
+@testset "Mooncake unary LazyExpression accumulation" begin
+    LazyExpressions = CFDomains.LazyExpressions
+    MooncakeExt = Base.get_extension(CFDomains, :CFDomainsMooncakeExt)
+    dx = zeros(1)
+    MooncakeExt.addto_lazy(1, 2.0, (dx,), (3.0,))
+    @test dx == [6.0]
+end
+
 @testset "Nested LazyExpression input is unsupported by Mooncake" begin
     function nested_lazy_read(x)
         LazyExpressions = CFDomains.LazyExpressions
