@@ -7,10 +7,14 @@ using Base:@propagate_inbounds as @prop
     @lazy f(inputs...; params...) = expression
 
 Define a lazy array expression from positional array inputs and optional
-keyword parameters. Automatic differentiation treats positional inputs as
-differentiable data and `params` as constants, including when a parameter is
-an array. Pass an array as a positional input when it should receive a
-cotangent.
+keyword parameters. Inputs must be arrays, not other lazy expressions, and the
+scalar result must have the same floating-point precision as the inputs.
+Automatic differentiation treats positional inputs as differentiable data and
+`params` as constants, including when a parameter is an array. Pass an array
+as a positional input when it should receive a cotangent.
+
+Violating these requirements has undefined behavior and may cause an error or
+incorrect gradients.
 """
 macro lazy(expr)
     esc(expand_lazy(expr))
@@ -37,8 +41,11 @@ const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 """
     lazy_expr(fun, inputs, params)
 
-Construct a lazy array expression. Automatic differentiation propagates
-cotangents to `inputs`; `params` are constants and do not receive cotangents.
+Construct a lazy array expression. Inputs must be arrays, not lazy expressions,
+and the scalar result must have the same floating-point precision as the input
+arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
+are constants and do not receive cotangents. Violating these requirements has
+undefined behavior and may cause an error or incorrect gradients.
 """
 function lazy_expr(fun::Fun, inputs::Arrays{N}, params) where {Fun, N}
     T = promote_type((eltype(input) for input in inputs)...)
@@ -46,10 +53,12 @@ function lazy_expr(fun::Fun, inputs::Arrays{N}, params) where {Fun, N}
 end
 
 """
-A lazy array computed elementwise from `inputs` and `params`. The automatic
-differentiation rules treat array-valued `inputs` as differentiable and
-`params` as constants. Passing a `LazyExpression` as an input to another lazy
-expression is currently unsupported by Mooncake and by the Enzyme rule.
+A lazy array computed elementwise from `inputs` and `params`. Inputs are
+arrays, not lazy expressions; the scalar result must have the same
+floating-point precision as the inputs. Automatic differentiation treats
+array-valued `inputs` as differentiable and `params` as constants. Violating
+these requirements has undefined behavior and may cause an error or incorrect
+gradients.
 """
 struct LazyExpression{T, N, Fun, Inputs<:Arrays{N}, Params<:Tuple} <: AbstractArray{T,N}
     fun::Fun
@@ -128,20 +137,19 @@ Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
 mode. `shadow` is the Enzyme shadow expression; contributions written to the
 cotangent are accumulated in its input arrays without allocating a full-sized
 cotangent array. Direct scalar reads support homogeneous real floating-point
-array inputs. A `LazyExpression` passed as an explicit input is unsupported by
-both the Enzyme rule and Mooncake. Parameters are constants and do not receive
-cotangents, whether they are scalars or arrays;
-a `LazyExpression` stored in `params` is unsupported. Mixed-precision or
-complex-valued expressions, and differentiable arrays captured by `fun`, are
-not handled. A scalar callable whose method signature rejects ForwardDiff dual
-values uses an Enzyme fallback; a generic callable that accepts duals but calls
-a dual-incompatible helper is unsupported because detecting that case would
-require executing it before selecting a fallback. Pass differentiable arrays
-as explicit lazy inputs.
+array inputs. Inputs must not themselves be lazy expressions, and the scalar
+result must preserve input precision; violations have undefined behavior and
+may cause an error or incorrect gradients. Parameters are constants and do not
+receive cotangents. A `LazyExpression` stored in `params` is unsupported.
+Mixed-precision or complex-valued expressions, and differentiable arrays
+captured by `fun`, are not handled. A scalar callable whose method signature
+rejects ForwardDiff dual values uses an Enzyme fallback; a generic callable
+that accepts duals but calls a dual-incompatible helper is unsupported because
+detecting that case would require executing it before selecting a fallback.
+Pass differentiable arrays as explicit lazy inputs.
 
 This method is available when both Enzyme and ForwardDiff are loaded.
 """
 function lazy_cotangent end
 
 end # module
-
