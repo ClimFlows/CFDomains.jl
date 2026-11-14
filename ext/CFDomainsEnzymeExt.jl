@@ -62,57 +62,73 @@ struct LazyReadTape{I,C}
     children::C
 end
 
-is_differentiable_scalar(x) = x isa AbstractFloat
+# Differentiate only floating-point scalar values read from explicit inputs.
+# Type-directed tuple recursion keeps seed positions and the returned partial
+# tuple concrete; all params are passed to the primal callable as constants.
+nactive_inputs(::Tuple{}) = 0
+nactive_inputs(values::Tuple{<:AbstractFloat,Vararg}) =
+    1 + nactive_inputs(Base.tail(values))
+nactive_inputs(values::Tuple{Any,Vararg{Any}}) =
+    nactive_inputs(Base.tail(values))
 
-# Use Enzyme for the rare callable that rejects ForwardDiff.Dual arguments.
-# The activity mask keeps constants (including LazyExpression params) unseeded.
-function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
-    annotations = ntuple(length(values)) do i
-        active[i] ? Active(values[i]) : Const(values[i])
-    end
-    (partials, value) = autodiff(ReverseWithPrimal, fun, Active, annotations...)
-    partials = ntuple(i -> partials[i] === nothing ? zero(value) : partials[i], length(partials))
-    return value, partials
+input_activity(::Tuple{}) = ()
+input_activity(values::Tuple{<:AbstractFloat,Vararg}) =
+    (true, input_activity(Base.tail(values))...)
+input_activity(values::Tuple{Any,Vararg{Any}}) =
+    (false, input_activity(Base.tail(values))...)
+
+function seed_input_values(::Tuple{}, ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
+    ()
+end
+function seed_input_values(values::Tuple{<:AbstractFloat,Vararg},
+                           ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
+    value = first(values)
+    seed_partials = ntuple(j -> j == I ? one(value) : zero(value), N)
+    dual = FD.Dual{Tag}(value, seed_partials)
+    return (dual, seed_input_values(Base.tail(values), Val(N), Val(I + 1), Tag)...)
+end
+function seed_input_values(values::Tuple{Any,Vararg{Any}},
+                           ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
+    return (first(values), seed_input_values(Base.tail(values), Val(N), Val(I), Tag)...)
 end
 
-# Compute the local scalar pullback data once in the primal pass. The mask
-# marks only active input values; params are appended as constants. Cache the
-# resulting input partials in LazyReadTape for the matching reverse read.
-function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_differentiable_scalar, values), fallback_fun=fun)
-    active = ntuple(i -> active[i] && is_differentiable_scalar(values[i]), length(values))
-    nactive = count(identity, active)
+function input_partials(::Tuple{}, result::FD.Dual, ::Val{I}, zero_value) where {I}
+    ()
+end
+function input_partials(values::Tuple{<:AbstractFloat,Vararg}, result::FD.Dual,
+                        ::Val{I}, zero_value) where {I}
+    partial = result.partials.values[I]
+    return (partial, input_partials(Base.tail(values), result, Val(I + 1), zero_value)...)
+end
+function input_partials(values::Tuple{Any,Vararg{Any}}, result::FD.Dual,
+                        ::Val{I}, zero_value) where {I}
+    return (zero_value, input_partials(Base.tail(values), result, Val(I), zero_value)...)
+end
+
+function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_fun=fun)
+    nactive = nactive_inputs(inputs)
     if iszero(nactive)
-        return fun(values...), ntuple(_ -> 0, length(values))
+        return fun(inputs..., params...), ntuple(_ -> 0, length(inputs))
     end
 
-    active_values = ntuple(i -> active[i] ? values[i] : nothing, length(values))
-    value_type = promote_type(map(typeof, filter(!isnothing, active_values))...)
-    positions = ntuple(length(values)) do i
-        active[i] ? count(identity, active[1:i]) : 0
-    end
-    dual_values = ntuple(length(values)) do i
-        position = positions[i]
-        if iszero(position)
-            values[i]
-        else
-            seed_partials = ntuple(j -> j == position ? one(value_type) : zero(value_type), nactive)
-            FD.Dual{typeof(fun)}(values[i], seed_partials)
-        end
+    dual_inputs = seed_input_values(inputs, Val(nactive), Val(1), typeof(fun))
+    dual_args = (dual_inputs..., params...)
+
+    # Select Enzyme before calling the scalar function when its method signature
+    # rejects Duals. Do not catch an internal MethodError and retry: a callable
+    # may have side effects before reaching the incompatible helper.
+    if !applicable(fallback_fun, dual_args...)
+        active = (input_activity(inputs)..., ntuple(_ -> false, length(params))...)
+        return enzyme_value_and_partials(fallback_fun, (inputs..., params...), active)
     end
 
-    # Select Enzyme before calling the scalar function when its method
-    # signature rejects Duals. Do not catch an internal MethodError and retry:
-    # a callable may have side effects before reaching the incompatible helper.
-    applicable(fallback_fun, dual_values...) || return enzyme_value_and_partials(fallback_fun, values, active)
-    result = fun(dual_values...)
+    result = fun(dual_args...)
     if result isa FD.Dual
-        output_partials = ntuple(
-            i -> iszero(positions[i]) ? zero(value_type) : result.partials.values[positions[i]],
-            length(values),
-        )
-        return FD.value(result), output_partials
+        value = FD.value(result)
+        partials = input_partials(inputs, result, Val(1), zero(value))
+        return value, partials
     else
-        return result, ntuple(_ -> zero(value_type), length(values))
+        return result, ntuple(_ -> 0, length(inputs))
     end
 end
 
@@ -122,12 +138,9 @@ end
     inputs = map(first, reads)
     children = map(last, reads)
     params = map(param -> get(param, indices...), expr.params)
-    active_inputs = map(is_differentiable_scalar, inputs)
-    inactive_params = ntuple(_ -> false, length(params))
     callable = expr.fun
     fun(args...) = callable(args...)
-    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...), callable)
-    input_partials = ntuple(i -> partials[i], length(inputs))
+    value, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
     return value, LazyReadTape(input_partials, children)
 end
 
@@ -213,10 +226,7 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     params = map(param -> get(param, cartesian...), expr.params)
     callable = expr.fun
     fun(args...) = callable(args...)
-    active_inputs = map(is_differentiable_scalar, inputs)
-    inactive_params = ntuple(_ -> false, length(params))
-    _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...), callable)
-    input_partials = ntuple(i -> partials[i], length(inputs))
+    _, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
