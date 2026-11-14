@@ -11,12 +11,12 @@
 ### v0.6.1
 
 * new: Enzyme reverse mode differentiates direct reads from `LazyExpression`
-  values, including nested expressions, by accumulating into input, parameter,
-  and array-valued parameter shadows without a full-sized cotangent array.
-  This rule targets homogeneous real floating-point fields; mixed precision,
-  complex values, scalar active parameters, and active arrays captured by the
-  expression function are not handled. Lazy expressions used as parameters are
-  also unsupported.
+  values, including nested expressions, by accumulating into input shadows
+  without a full-sized cotangent array. Like Mooncake, the Enzyme rule treats
+  `params` as constants; pass arrays that need gradients as positional inputs.
+  This rule targets homogeneous real floating-point fields. Mixed precision,
+  complex values, and active arrays captured by the expression function are
+  not handled. Lazy expressions used as parameters are also unsupported.
 
 ### v0.6
 
