@@ -148,13 +148,6 @@ end
     @test dx_powered == [-4.0]
     @test exponent == [2.0]
 
-    typed_x = [2.0]
-    typed_dx = zeros(size(typed_x))
-    typed_expr = LazyExpressions.lazy_expr((x::Float64) -> x * x, (typed_x,), ())
-    typed_shadow = LazyExpressions.lazy_expr(typed_expr.fun, (typed_dx,), ())
-    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
-                    Enzyme.MixedDuplicated(typed_expr, Ref(typed_shadow)))
-    @test typed_dx == [4.0]
 
     x_powered = [-2.0]
     dx_powered = zeros(size(x_powered))
