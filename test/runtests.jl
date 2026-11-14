@@ -95,17 +95,17 @@ end
 end
 
 
-@testset "Mooncake LazyExpression read" begin
-    function lazy_read(x)
-        @lazy square(x) = x * x
-        square[1]
+@testset "Nested LazyExpression input is unsupported by Mooncake" begin
+    function nested_lazy_read(x)
+        LazyExpressions = CFDomains.LazyExpressions
+        @lazy inner(x) = x * x
+        @lazy outer(x) = 2 * x
+        nested = LazyExpressions.lazy_expr(outer.fun, (inner,), outer.params)
+        nested[1]
     end
 
     x = [2.0]
-    cache = Mooncake.prepare_gradient_cache(lazy_read, x)
-    value, gradient = Mooncake.value_and_gradient!!(cache, lazy_read, x)
-    @test value == 4.0
-    @test gradient[2] == [4.0]
+    @test_throws MethodError Mooncake.prepare_gradient_cache(nested_lazy_read, x)
 end
 
 @testset "Nested LazyExpression input is unsupported by Enzyme" begin
