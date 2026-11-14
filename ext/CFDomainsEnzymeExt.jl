@@ -34,7 +34,9 @@ lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
 # Direct scalar reads support homogeneous real floating-point expressions.
 # Complex/non-floating and mixed-precision expressions, scalar active
 # parameters, and differentiable arrays captured by `fun` are out of scope.
-const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {T<:AbstractFloat,N,F,I,P}
+const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {
+    T<:AbstractFloat,N,F,I<:Tuple{Vararg{AbstractArray{T}}},P,
+}
 const LazyExpressionInput = Union{
     Duplicated{<:FloatingLazyExpression},
     MixedDuplicated{<:FloatingLazyExpression},
