@@ -12,6 +12,7 @@ using Test
 using Adapt
 import ForwardDiff
 import Enzyme
+import Mooncake
 
 @testset "Subtracting operator output" begin
     @test adj_action_in(subfrom!) === subfrom!
@@ -95,8 +96,6 @@ end
 
 
 @testset "Nested Mooncake LazyExpression input" begin
-    import Mooncake
-
     function nested_lazy_read(x)
         LazyExpressions = CFDomains.LazyExpressions
         @lazy inner(x) = x * x
