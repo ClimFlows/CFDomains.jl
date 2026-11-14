@@ -99,8 +99,8 @@ geti(a::Number, _) = a
 @prop get_tuple((a,b)::Tuple{Any,Any}, i) = (geti(a,i), geti(b,i))
 @prop get_tuple((a,b,c)::Tuple{Any,Any,Any}, i) = (geti(a,i), geti(b,i), geti(c,i))
 
-@prop function addto_lazy(i, v, (∂a,)::Tuple{Any}, da)
-    ∂a[i] += v*da
+@prop function addto_lazy(i, v, (∂a,)::Tuple{Any}, (da,)::Tuple{Any})
+    ∂a[i] += v * da
 end
 
 @prop function addto_lazy(i, v, (∂a,∂b)::Tuple{Any,Any}, (da,db))
