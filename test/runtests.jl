@@ -145,6 +145,26 @@ end
     @test dx_float == [2.0]
     @test dmask == [0]
 
+    x_powered = [-2.0]
+    dx_powered = zeros(size(x_powered))
+    exponent = [2.0]
+    @lazy powered(x_powered; exponent) = x_powered ^ exponent
+    shared_power_shadow = LazyExpressions.lazy_expr(powered.fun, (dx_powered,), powered.params)
+    shared_power_cotangent = LazyExpressions.lazy_cotangent(
+        Enzyme.MixedDuplicated(powered, Ref(shared_power_shadow)),
+    )
+    LazyOperators.addto!(shared_power_cotangent, 1.0, 1)
+    @test dx_powered == [-4.0]
+    @test exponent == [2.0]
+
+    typed_x = [2.0]
+    typed_dx = zeros(size(typed_x))
+    typed_expr = LazyExpressions.lazy_expr((x::Float64) -> x * x, (typed_x,), ())
+    typed_shadow = LazyExpressions.lazy_expr(typed_expr.fun, (typed_dx,), ())
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(typed_expr, Ref(typed_shadow)))
+    @test typed_dx == [4.0]
+
     x_scaled = [2.0]
     dx_scaled = zeros(size(x_scaled))
     factor = [3.0]
