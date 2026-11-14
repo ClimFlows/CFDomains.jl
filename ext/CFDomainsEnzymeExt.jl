@@ -194,7 +194,8 @@ end
     cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
     cotangent = lazy_cotangent(input)
     value, tape = read_with_tape(input.val, cartesian)
-    return EnzymeRules.AugmentedReturn(value, nothing, tape)
+    value = value::eltype(input.val)
+    return EnzymeRules.AugmentedReturn{typeof(value),Nothing,typeof(tape)}(value, nothing, tape)
 end
 
 @prop function EnzymeRules.reverse(
