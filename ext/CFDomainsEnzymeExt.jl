@@ -199,11 +199,12 @@ end
     config::EnzymeRules.RevConfigWidth{1},
     ::Const{typeof(Base.getindex)},
     derivative::Active,
-    tape::LazyReadTape,
+    tape,
     input::LazyExpressionInput,
     indices::Vararg{Const},
 )
     cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
+    tape = tape::LazyReadTape
     accumulate_taped!(lazy_cotangent(input), tape, derivative.val, cartesian...)
     return ntuple(_ -> nothing, length(indices) + 1)
 end
