@@ -125,7 +125,7 @@ end
     inputs = map(first, reads)
     children = map(last, reads)
     params = map(param -> get(param, indices...), expr.params)
-    active_inputs = map((input, dinput) -> has_active_cotangent(input, dinput), expr.inputs, dinputs)
+    active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
     fun(args...) = expr.fun(args...)
     value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
@@ -135,11 +135,6 @@ end
 
 # Input activity depends on the input scalar type, not on runtime aliasing
 # between primal and shadow arrays. This keeps the partial tuple concrete.
-@prop has_active_cotangent(input::AbstractArray, dinput) =
-    !(eltype(input) <: Integer)
-@prop has_active_cotangent(input::LazyExpression, dinput::LazyExpression) =
-    any(map((child, dchild) -> has_active_cotangent(child, dchild), input.inputs, dinput.inputs))
-
 @prop read_input_with_tape(input::AbstractArray, dinput, indices::Tuple) =
     (@inbounds input[indices...], nothing)
 @prop read_input_with_tape(input::LazyExpression, dinput::LazyExpression, indices::Tuple) =
@@ -159,7 +154,7 @@ end
     contribution = value * partial
     if input isa LazyExpression
         accumulate_taped!(lazy_cotangent(input, dinput), child, contribution, indices...)
-    elseif eltype(input) <: Integer
+    elseif eltype(input) <: Integer || dinput === input
         nothing
     else
         dinput[indices...] += contribution
@@ -210,8 +205,7 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
     fun(args...) = expr.fun(args...)
-    active_inputs = map((input, dinput) -> has_active_cotangent(input, dinput),
-                        expr.inputs, cotangent.dinputs)
+    active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
     _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
     input_partials = ntuple(i -> partials[i], length(inputs))
