@@ -220,7 +220,7 @@ end
     if input isa LazyExpression
         cotangent = lazy_cotangent(input, dinput)
         accumulate!(cotangent, contribution, indices...)
-    elseif eltype(input) <: Integer
+    elseif eltype(input) <: Integer || dinput === input
         nothing
     else
         dinput[indices...] += contribution
