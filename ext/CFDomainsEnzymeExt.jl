@@ -3,16 +3,22 @@ module CFDomainsEnzymeExt
 using Base: @propagate_inbounds as @prop
 
 using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated, ReverseWithPrimal, autodiff
-using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, parameter_indices
+using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get
 import CFDomains.LazyExpressions: lazy_cotangent
 import CFDomains.LazyOperators as LazyOps
 import ForwardDiff as FD
 
-"A write-through tangent view for a lazy expression."
-struct LazyCotangent{T,N,E,I,P} <: AbstractArray{T,N}
+"""
+    LazyCotangent
+
+A write-through view of input cotangents for a lazy expression. It lets
+operator code accumulate directly into the Enzyme shadow input arrays without
+allocating a full-sized cotangent array. Lazy-expression parameters are
+constants and therefore have no cotangent storage.
+"""
+struct LazyCotangent{T,N,E,I} <: AbstractArray{T,N}
     expr::E
     dinputs::I
-    dparams::P
 end
 
 function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) where {T,N}
@@ -21,9 +27,7 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
     length(expr.params) == length(shadow.params) ||
         throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
-    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params)}(
-        expr, shadow.inputs, shadow.params,
-    )
+    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs)}(expr, shadow.inputs)
 end
 
 lazy_cotangent(input::Duplicated{<:LazyExpression}) =
@@ -31,27 +35,37 @@ lazy_cotangent(input::Duplicated{<:LazyExpression}) =
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
 
-# Direct scalar reads support homogeneous real floating-point expressions.
-# Complex/non-floating and mixed-precision expressions, scalar active
-# parameters, LazyExpression-valued parameters, and differentiable arrays captured
-# by `fun` are out of scope.
+# The custom rule differentiates homogeneous real floating-point input arrays.
+# LazyExpression params are constants (as in Mooncake), including array-valued
+# params. Complex/non-floating and mixed-precision expressions, LazyExpression-
+# valued params, and differentiable arrays captured by `fun` are out of scope.
 const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {
     T<:AbstractFloat,N,F,I<:Tuple{Vararg{AbstractArray{T}}},P,
 }
+# Enzyme wrappers that provide a primal expression and its input shadow.
 const LazyExpressionInput = Union{
     Duplicated{<:FloatingLazyExpression},
     MixedDuplicated{<:FloatingLazyExpression},
 }
 
-struct LazyReadTape{I,P,C,V}
+"""
+    LazyReadTape
+
+Forward-pass data for one scalar read. `input_partials` stores the local
+partial for each explicit input value, and `children` stores tapes for nested
+lazy inputs in the same order. Reverse mode uses these cached partials instead
+of rereading primal arrays that may have changed since the read. Parameters
+are constants and have no partials in the tape.
+"""
+struct LazyReadTape{I,C}
     input_partials::I
-    param_partials::P
     children::C
-    values::V
 end
 
 is_differentiable_scalar(x) = x isa AbstractFloat
 
+# Use Enzyme for the rare callable that rejects ForwardDiff.Dual arguments.
+# The activity mask keeps constants (including LazyExpression params) unseeded.
 function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
     annotations = ntuple(length(values)) do i
         active[i] ? Active(values[i]) : Const(values[i])
@@ -60,6 +74,9 @@ function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
     return value, partials
 end
 
+# Compute the local scalar pullback data once in the primal pass. The mask
+# marks only active input values; params are appended as constants. Cache the
+# resulting input partials in LazyReadTape for the matching reverse read.
 function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_differentiable_scalar, values))
     active = ntuple(i -> active[i] && is_differentiable_scalar(values[i]), length(values))
     nactive = count(identity, active)
@@ -101,58 +118,34 @@ function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_diff
     end
 end
 
-@prop function read_with_tape(expr::LazyExpression, indices::Tuple, dinputs::Tuple, dparams::Tuple)
+@prop function read_with_tape(expr::LazyExpression, indices::Tuple, dinputs::Tuple)
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     reads = map((input, dinput) -> read_input_with_tape(input, dinput, indices), expr.inputs, dinputs)
     inputs = map(first, reads)
     children = map(last, reads)
     params = map(param -> get(param, indices...), expr.params)
     active_inputs = map((input, dinput) -> has_active_cotangent(input, dinput), expr.inputs, dinputs)
-    active_params = map((param, dparam) ->
-        param isa AbstractArray && dparam !== param && !(eltype(param) <: Integer),
-        expr.params, dparams,
-    )
+    inactive_params = ntuple(_ -> false, length(params))
     fun(args...) = expr.fun(args...)
-    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., active_params...))
-    ninputs = length(inputs)
-    input_partials = ntuple(i -> partials[i], ninputs)
-    param_partials = ntuple(i -> partials[ninputs + i], length(params))
-    return value, LazyReadTape(input_partials, param_partials, children, (inputs..., params...))
+    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
+    input_partials = ntuple(i -> partials[i], length(inputs))
+    return value, LazyReadTape(input_partials, children)
 end
 
 @prop has_active_cotangent(input::AbstractArray, dinput) =
     dinput !== input && !(eltype(input) <: Integer)
 @prop has_active_cotangent(input::LazyExpression, dinput::LazyExpression) =
-    any(map((child, dchild) -> has_active_cotangent(child, dchild), input.inputs, dinput.inputs)) ||
-    any(map((param, dparam) ->
-        param isa AbstractArray && dparam !== param && !(eltype(param) <: Integer),
-        input.params, dinput.params,
-    ))
+    any(map((child, dchild) -> has_active_cotangent(child, dchild), input.inputs, dinput.inputs))
 
 @prop read_input_with_tape(input::AbstractArray, dinput, indices::Tuple) =
     (@inbounds input[indices...], nothing)
 @prop read_input_with_tape(input::LazyExpression, dinput::LazyExpression, indices::Tuple) =
-    read_with_tape(input, indices, dinput.inputs, dinput.params)
+    read_with_tape(input, indices, dinput.inputs)
 
 @prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
     accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs,
                              tape.input_partials, tape.children, value, indices...)
-    accumulate_taped_params!(cotangent.expr.params, cotangent.dparams,
-                             tape.param_partials, value, indices...)
     return cotangent
-end
-
-@prop accumulate_taped_params!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
-
-@prop function accumulate_taped_params!((param, params...), (dparam, dparams...),
-                                        (partial, partials...), value, indices...)
-    if dparam !== param && param isa LazyExpression
-        throw(ArgumentError("LazyExpression-valued parameters are not supported by the Enzyme rule"))
-    elseif dparam !== param && param isa AbstractArray && !(eltype(param) <: Integer)
-        param_indices = parameter_indices(Val(length(indices)), Val(ndims(dparam)), indices)
-        dparam[param_indices...] += value * partial
-    end
-    accumulate_taped_params!(params, dparams, partials, value, indices...)
 end
 
 @prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
@@ -180,7 +173,7 @@ end
 )
     cartesian = cartesian_indices(input.val, map(index -> index.val, indices))
     cotangent = lazy_cotangent(input)
-    value, tape = read_with_tape(input.val, cartesian, cotangent.dinputs, cotangent.dparams)
+    value, tape = read_with_tape(input.val, cartesian, cotangent.dinputs)
     primal = EnzymeRules.needs_primal(config) ? value : nothing
     return EnzymeRules.AugmentedReturn(primal, nothing, tape)
 end
@@ -214,12 +207,12 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
     fun(args...) = expr.fun(args...)
-    _, partials = scalar_value_and_partials(fun, (inputs..., params...))
-    ninputs = length(expr.inputs)
-    input_partials = ntuple(i -> partials[i], ninputs)
-    param_partials = ntuple(i -> partials[ninputs + i], length(expr.params))
+    active_inputs = map((input, dinput) -> has_active_cotangent(input, dinput),
+                        expr.inputs, cotangent.dinputs)
+    inactive_params = ntuple(_ -> false, length(params))
+    _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
+    input_partials = ntuple(i -> partials[i], length(inputs))
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
-    accumulate_taped_params!(expr.params, cotangent.dparams, param_partials, value, cartesian...)
     return cotangent
 end
 
