@@ -62,37 +62,21 @@ struct LazyReadTape{I}
     input_partials::I
 end
 
-# The @lazy contract guarantees every positional input is floating-point.
-function seed_input_values(::Tuple{}, ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
-    ()
-end
-function seed_input_values(values::Tuple{<:AbstractFloat,Vararg},
-                           ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
-    value = first(values)
-    seed_partials = ntuple(j -> j == I ? one(value) : zero(value), N)
-    dual = FD.Dual{Tag}(value, seed_partials)
-    return (dual, seed_input_values(Base.tail(values), Val(N), Val(I + 1), Tag)...)
-end
-function input_partials(::Tuple{}, result::FD.Dual, ::Val{I}, zero_value) where {I}
-    ()
-end
-function input_partials(values::Tuple{<:AbstractFloat,Vararg}, result::FD.Dual,
-                        ::Val{I}, zero_value) where {I}
-    partial = result.partials.values[I]
-    return (partial, input_partials(Base.tail(values), result, Val(I + 1), zero_value)...)
-end
+# The @lazy contract guarantees homogeneous floating-point positional inputs.
 function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple)
     ninputs = length(inputs)
-    dual_inputs = seed_input_values(inputs, Val(ninputs), Val(1), typeof(fun))
+    dual_inputs = ntuple(i -> FD.Dual{typeof(fun)}(
+        inputs[i], ntuple(j -> i == j ? one(inputs[i]) : zero(inputs[i]), ninputs),
+    ), ninputs)
     result = fun(dual_inputs..., params...)
     if result isa FD.Dual
         value = FD.value(result)
-        partials = input_partials(inputs, result, Val(1), zero(value))
-        return value, partials
+        return value, result.partials.values
     else
         return result, ntuple(_ -> zero(result), ninputs)
     end
 end
+
 @prop function read_with_tape(expr::LazyExpression{T}, indices::Tuple) where {T}
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
@@ -105,32 +89,11 @@ end
     return value, LazyReadTape(input_partials)
 end
 
-@prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
-    accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs, tape.input_partials, value, indices...)
-    return cotangent
-end
-
-@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
-
-@prop function accumulate_taped_inputs!((input, inputs...), (dinput, dinputs...),
-                                        (partial, partials...), value, indices...)
-    contribution = value * partial
-    if dinput === input
-        nothing
-    else
-        dinput[indices...] += contribution
-    end
-    accumulate_taped_inputs!(inputs, dinputs, partials, value, indices...)
-end
-
 @inline expand_cartesian_indices(::Tuple{}) = ()
 @inline expand_cartesian_indices(indices::Tuple{CartesianIndex{M},Vararg{Any}}) where {M} =
     (Tuple(first(indices))..., expand_cartesian_indices(Base.tail(indices))...)
 @inline expand_cartesian_indices(indices::Tuple{Any,Vararg{Any}}) =
     (first(indices), expand_cartesian_indices(Base.tail(indices))...)
-
-@inline scalar_cartesian_indices(expr, indices::Tuple) =
-    cartesian_indices(expr, expand_cartesian_indices(indices))
 
 @prop function EnzymeRules.augmented_primal(
     config::EnzymeRules.RevConfigWidth{1},
@@ -139,7 +102,7 @@ end
     input::LazyExpressionInput,
     indices::Vararg{Const},
 )
-    cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
+    cartesian = cartesian_indices(input.val, expand_cartesian_indices(map(index -> index.val, indices)))
     cotangent = lazy_cotangent(input)
     value, tape = read_with_tape(input.val, cartesian)
     value = value::eltype(input.val)
@@ -160,7 +123,9 @@ end
 )
     cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
     tape = tape::LazyReadTape
-    accumulate_taped!(lazy_cotangent(input), tape, derivative.val, cartesian...)
+    cotangent = lazy_cotangent(input)
+    accumulate_inputs!(cotangent.expr.inputs, cotangent.dinputs, tape.input_partials,
+                       derivative.val, cartesian...)
     return ntuple(_ -> nothing, length(indices) + 1)
 end
 
@@ -181,7 +146,7 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     params = map(param -> get(param, cartesian...), expr.params)
     callable = expr.fun
     fun(args...) = callable(args...)
-    _, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
+    _, input_partials = scalar_value_and_partials(fun, inputs, params)
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
