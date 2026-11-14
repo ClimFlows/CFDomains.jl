@@ -27,7 +27,7 @@ function pdv(fun3::T, x, y, z) where {T}
     ff = fun3(xx, yy, zz)
     value = ff isa FD.Dual ? FD.value(ff) : ff
     partials = ff isa FD.Dual ? ff.partials.values : (zero(x), zero(y), zero(z))
-    return return_value ? (value, partials) : partials
+    return value, partials
 end
 
 end
