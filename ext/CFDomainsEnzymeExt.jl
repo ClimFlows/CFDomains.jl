@@ -120,7 +120,8 @@ end
 function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_fun=fun)
     nactive = nactive_inputs(inputs)
     if iszero(nactive)
-        return fun(inputs..., params...), ntuple(_ -> 0, length(inputs))
+        value = fun(inputs..., params...)
+        return value, ntuple(_ -> zero(value), length(inputs))
     end
 
     dual_inputs = seed_input_values(inputs, Val(nactive), Val(1), typeof(fun))
@@ -140,7 +141,7 @@ function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_f
         partials = input_partials(inputs, result, Val(1), zero(value))
         return value, partials
     else
-        return result, ntuple(_ -> 0, length(inputs))
+        return result, ntuple(_ -> zero(result), length(inputs))
     end
 end
 
