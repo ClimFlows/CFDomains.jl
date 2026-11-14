@@ -12,7 +12,10 @@
 
 * new: Enzyme reverse mode differentiates direct reads from `LazyExpression`
   values, including nested expressions, by accumulating into input, parameter,
-  and captured-array shadows without a full-sized cotangent array.
+  and array-valued parameter shadows without a full-sized cotangent array.
+  This rule targets homogeneous real floating-point fields; mixed precision,
+  complex values, scalar active parameters, and active arrays captured by the
+  expression function are not handled.
 
 ### v0.6
 

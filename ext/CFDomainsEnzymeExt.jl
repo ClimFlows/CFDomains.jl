@@ -2,7 +2,6 @@ module CFDomainsEnzymeExt
 
 using Base: @propagate_inbounds as @prop
 
-import Enzyme
 using Enzyme: Active, Const, Duplicated, EnzymeRules, MixedDuplicated
 using CFDomains.LazyExpressions: LazyExpression, cartesian_indices, get, parameter_indices
 import CFDomains.LazyExpressions: lazy_cotangent
@@ -10,11 +9,10 @@ import CFDomains.LazyOperators as LazyOps
 import ForwardDiff as FD
 
 "A write-through tangent view for a lazy expression."
-struct LazyCotangent{T,N,E,I,P,F} <: AbstractArray{T,N}
+struct LazyCotangent{T,N,E,I,P} <: AbstractArray{T,N}
     expr::E
     dinputs::I
     dparams::P
-    dfun::F
 end
 
 function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) where {T,N}
@@ -23,10 +21,8 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
     length(expr.params) == length(shadow.params) ||
         throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
-    return LazyCotangent{
-        T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params),typeof(shadow.fun),
-    }(
-        expr, shadow.inputs, shadow.params, shadow.fun,
+    return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs),typeof(shadow.params)}(
+        expr, shadow.inputs, shadow.params,
     )
 end
 
@@ -35,10 +31,13 @@ lazy_cotangent(input::Duplicated{<:LazyExpression}) =
 lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
     lazy_cotangent(input.val, input.dval[])
 
-const RealLazyExpression = LazyExpression{T,N,F,I,P} where {T<:Real,N,F,I,P}
+# Direct scalar reads support homogeneous real floating-point expressions.
+# Complex/non-floating and mixed-precision expressions, scalar active
+# parameters, and differentiable arrays captured by `fun` are out of scope.
+const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {T<:AbstractFloat,N,F,I,P}
 const LazyExpressionInput = Union{
-    Duplicated{<:RealLazyExpression},
-    MixedDuplicated{<:RealLazyExpression},
+    Duplicated{<:FloatingLazyExpression},
+    MixedDuplicated{<:FloatingLazyExpression},
 }
 
 struct LazyReadTape{I,P,C,V}
@@ -47,14 +46,6 @@ struct LazyReadTape{I,P,C,V}
     children::C
     values::V
 end
-
-has_separate_array_captures(fun, dfun) =
-    fieldcount(typeof(fun)) == fieldcount(typeof(dfun)) &&
-    any(i -> getfield(fun, i) isa AbstractArray &&
-             getfield(dfun, i) isa AbstractArray &&
-             getfield(fun, i) !== getfield(dfun, i), 1:fieldcount(typeof(fun)))
-
-@inline scaled_closure_call(fun, scale, args...) = scale * fun(args...)
 
 is_differentiable_scalar(x) = x isa AbstractFloat
 
@@ -75,18 +66,18 @@ function scalar_value_and_partials(fun, values::Tuple)
         if iszero(position)
             values[i]
         else
-            partials = ntuple(j -> j == position ? one(value_type) : zero(value_type), nactive)
-            FD.Dual{typeof(fun)}(values[i], partials)
+            seed_partials = ntuple(j -> j == position ? one(value_type) : zero(value_type), nactive)
+            FD.Dual{typeof(fun)}(values[i], seed_partials)
         end
     end
 
     result = fun(dual_values...)
     if result isa FD.Dual
-        partials = ntuple(
+        output_partials = ntuple(
             i -> iszero(positions[i]) ? zero(value_type) : result.partials.values[positions[i]],
             length(values),
         )
-        return FD.value(result), partials
+        return FD.value(result), output_partials
     else
         return result, ntuple(_ -> zero(value_type), length(values))
     end
@@ -115,13 +106,6 @@ end
                              tape.input_partials, tape.children, value, indices...)
     accumulate_taped_params!(cotangent.expr.params, cotangent.dparams,
                              tape.param_partials, value, indices...)
-    if has_separate_array_captures(cotangent.expr.fun, cotangent.dfun)
-        Enzyme.autodiff(
-            Enzyme.Reverse, scaled_closure_call, Active,
-            Duplicated(cotangent.expr.fun, cotangent.dfun), Const(value),
-            map(Const, tape.values)...,
-        )
-    end
     return cotangent
 end
 
@@ -142,10 +126,10 @@ end
                                         (partial, partials...), (child, children...),
                                         value, indices...)
     contribution = value * partial
-    if eltype(input) <: Integer
-        nothing
-    elseif input isa LazyExpression
+    if input isa LazyExpression
         accumulate_taped!(lazy_cotangent(input, dinput), child, contribution, indices...)
+    elseif eltype(input) <: Integer
+        nothing
     else
         dinput[indices...] += contribution
     end
@@ -207,11 +191,11 @@ end
 
 @prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...), (partial, partials...), value, indices...)
     contribution = value * partial
-    if eltype(input) <: Integer
-        nothing
-    elseif input isa LazyExpression
+    if input isa LazyExpression
         cotangent = lazy_cotangent(input, dinput)
         accumulate!(cotangent, contribution, indices...)
+    elseif eltype(input) <: Integer
+        nothing
     else
         dinput[indices...] += contribution
     end
