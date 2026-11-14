@@ -47,8 +47,9 @@ end
 
 """
 A lazy array computed elementwise from `inputs` and `params`. The automatic
-differentiation rules for Mooncake and Enzyme treat `inputs` as differentiable
-and `params` as constants.
+differentiation rules treat array-valued `inputs` as differentiable and
+`params` as constants. Passing a `LazyExpression` as an input to another lazy
+expression is currently unsupported by Mooncake and by the Enzyme rule.
 """
 struct LazyExpression{T, N, Fun, Inputs<:Arrays{N}, Params<:Tuple} <: AbstractArray{T,N}
     fun::Fun
@@ -126,9 +127,10 @@ function pdv end
 Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
 mode. `shadow` is the Enzyme shadow expression; contributions written to the
 cotangent are accumulated in its input arrays without allocating a full-sized
-cotangent array. Direct scalar reads support homogeneous real floating-point input arrays,
-including nested `LazyExpression` values passed as explicit inputs. Parameters
-are constants and do not receive cotangents, whether they are scalars or arrays;
+cotangent array. Direct scalar reads support homogeneous real floating-point
+array inputs. A `LazyExpression` passed as an explicit input is unsupported by
+both the Enzyme rule and Mooncake. Parameters are constants and do not receive
+cotangents, whether they are scalars or arrays;
 a `LazyExpression` stored in `params` is unsupported. Mixed-precision or
 complex-valued expressions, and differentiable arrays captured by `fun`, are
 not handled. A scalar callable whose method signature rejects ForwardDiff dual
