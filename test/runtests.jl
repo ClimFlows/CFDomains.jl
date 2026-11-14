@@ -93,6 +93,25 @@ end
     @test dmask == [0]
 end
 
+
+@testset "Nested Mooncake LazyExpression input" begin
+    import Mooncake
+
+    function nested_lazy_read(x)
+        LazyExpressions = CFDomains.LazyExpressions
+        @lazy inner(x) = x * x
+        @lazy outer(x) = 2 * x
+        nested = LazyExpressions.lazy_expr(outer.fun, (inner,), outer.params)
+        nested[1]
+    end
+
+    x = [2.0]
+    cache = Mooncake.prepare_gradient_cache(nested_lazy_read, x)
+    value, gradient = Mooncake.value_and_gradient!!(cache, nested_lazy_read, x)
+    @test value == 8.0
+    @test gradient[2] == [8.0]
+end
+
 @testset "Nested Enzyme LazyExpression cotangent" begin
     LazyExpressions = CFDomains.LazyExpressions
     LazyOperators = CFDomains.LazyOperators
