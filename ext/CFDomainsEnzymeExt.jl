@@ -27,6 +27,8 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
     length(expr.params) == length(shadow.params) ||
         throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
+    any(input -> input isa LazyExpression, expr.inputs) &&
+        throw(ArgumentError("LazyExpression-valued inputs are unsupported by the Enzyme rule"))
     return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs)}(expr, shadow.inputs)
 end
 
@@ -37,7 +39,7 @@ lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
 
 # The custom rule differentiates homogeneous real floating-point input arrays.
 # LazyExpression params are constants (as in Mooncake), including array-valued
-# params. Complex/non-floating and mixed-precision expressions, LazyExpression-
+# params. Nested lazy inputs, complex/mixed-precision expressions, LazyExpression-
 # valued params, and differentiable arrays captured by `fun` are out of scope.
 const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {
     T<:AbstractFloat,N,F,I<:Tuple{Vararg{AbstractArray{T}}},P,
@@ -52,16 +54,12 @@ const LazyExpressionInput = Union{
     LazyReadTape
 
 Forward-pass data for one scalar read. `input_partials` stores the local
-partial for each explicit input value, and `children` stores tapes for nested
-`LazyExpression` values used as explicit inputs, in the same order. Nested
-lazy inputs are supported and their tapes are traversed recursively. Reverse
-mode uses cached partials instead of rereading primal arrays that may have
-changed since the read. Parameters are constants and have no partials in the
-tape; a `LazyExpression` stored in `params` is unsupported.
+partial for each explicit array input. Reverse mode uses these cached partials
+instead of rereading primal arrays that may have changed since the read.
+Parameters are constants and have no partials in the tape.
 """
-struct LazyReadTape{I,C}
+struct LazyReadTape{I}
     input_partials::I
-    children::C
 end
 
 # Enzyme fallback for scalar callables whose method signature rejects Duals.
@@ -148,41 +146,30 @@ end
 
 @prop function read_with_tape(expr::LazyExpression, indices::Tuple, dinputs::Tuple)
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
-    reads = map((input, dinput) -> read_input_with_tape(input, dinput, indices), expr.inputs, dinputs)
-    inputs = map(first, reads)
-    children = map(last, reads)
+    inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
     params = map(param -> get(param, indices...), expr.params)
     callable = expr.fun
     fun(args...) = callable(args...)
     value, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
-    return value, LazyReadTape(input_partials, children)
+    return value, LazyReadTape(input_partials)
 end
 
-@prop read_input_with_tape(input::AbstractArray, dinput, indices::Tuple) =
-    (@inbounds input[indices...], nothing)
-@prop read_input_with_tape(input::LazyExpression, dinput::LazyExpression, indices::Tuple) =
-    read_with_tape(input, indices, dinput.inputs)
-
 @prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
-    accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs,
-                             tape.input_partials, tape.children, value, indices...)
+    accumulate_taped_inputs!(cotangent.dinputs, tape.input_partials, value, indices...)
     return cotangent
 end
 
-@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
+@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, value, indices...) = nothing
 
-@prop function accumulate_taped_inputs!((input, inputs...), (dinput, dinputs...),
-                                        (partial, partials...), (child, children...),
+@prop function accumulate_taped_inputs!((dinput, dinputs...), (partial, partials...),
                                         value, indices...)
     contribution = value * partial
-    if input isa LazyExpression
-        accumulate_taped!(lazy_cotangent(input, dinput), child, contribution, indices...)
-    elseif eltype(input) <: Integer || dinput === input
+    if eltype(dinput) <: Integer
         nothing
     else
         dinput[indices...] += contribution
     end
-    accumulate_taped_inputs!(inputs, dinputs, partials, children, value, indices...)
+    accumulate_taped_inputs!(dinputs, partials, value, indices...)
 end
 
 @inline expand_cartesian_indices(::Tuple{}) = ()
@@ -239,23 +226,20 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     callable = expr.fun
     fun(args...) = callable(args...)
     _, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
-    accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
+    accumulate_inputs!(cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
 
-@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
+@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, value, indices...) = nothing
 
-@prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...), (partial, partials...), value, indices...)
+@prop function accumulate_inputs!((dinput, dinputs...), (partial, partials...), value, indices...)
     contribution = value * partial
-    if input isa LazyExpression
-        cotangent = lazy_cotangent(input, dinput)
-        accumulate!(cotangent, contribution, indices...)
-    elseif eltype(input) <: Integer || dinput === input
+    if eltype(dinput) <: Integer
         nothing
     else
         dinput[indices...] += contribution
     end
-    accumulate_inputs!(inputs, dinputs, partials, value, indices...)
+    accumulate_inputs!(dinputs, partials, value, indices...)
 end
 
 end
