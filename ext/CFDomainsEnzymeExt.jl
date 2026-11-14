@@ -53,9 +53,11 @@ const LazyExpressionInput = Union{
 
 Forward-pass data for one scalar read. `input_partials` stores the local
 partial for each explicit input value, and `children` stores tapes for nested
-lazy inputs in the same order. Reverse mode uses these cached partials instead
-of rereading primal arrays that may have changed since the read. Parameters
-are constants and have no partials in the tape.
+`LazyExpression` values used as explicit inputs, in the same order. Nested
+lazy inputs are supported and their tapes are traversed recursively. Reverse
+mode uses cached partials instead of rereading primal arrays that may have
+changed since the read. Parameters are constants and have no partials in the
+tape; a `LazyExpression` stored in `params` is unsupported.
 """
 struct LazyReadTape{I,C}
     input_partials::I
