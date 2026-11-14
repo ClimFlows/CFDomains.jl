@@ -144,7 +144,7 @@ function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_f
     end
 end
 
-@prop function read_with_tape(expr::LazyExpression, indices::Tuple, dinputs::Tuple)
+@prop function read_with_tape(expr::LazyExpression, indices::Tuple)
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
     params = map(param -> get(param, indices...), expr.params)
@@ -155,21 +155,21 @@ end
 end
 
 @prop function accumulate_taped!(cotangent::LazyCotangent, tape::LazyReadTape, value, indices...)
-    accumulate_taped_inputs!(cotangent.dinputs, tape.input_partials, value, indices...)
+    accumulate_taped_inputs!(cotangent.expr.inputs, cotangent.dinputs, tape.input_partials, value, indices...)
     return cotangent
 end
 
-@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, value, indices...) = nothing
+@prop accumulate_taped_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
 
-@prop function accumulate_taped_inputs!((dinput, dinputs...), (partial, partials...),
-                                        value, indices...)
+@prop function accumulate_taped_inputs!((input, inputs...), (dinput, dinputs...),
+                                        (partial, partials...), value, indices...)
     contribution = value * partial
-    if eltype(dinput) <: Integer
+    if eltype(input) <: Integer || dinput === input
         nothing
     else
         dinput[indices...] += contribution
     end
-    accumulate_taped_inputs!(dinputs, partials, value, indices...)
+    accumulate_taped_inputs!(inputs, dinputs, partials, value, indices...)
 end
 
 @inline expand_cartesian_indices(::Tuple{}) = ()
@@ -190,7 +190,7 @@ end
 )
     cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
     cotangent = lazy_cotangent(input)
-    value, tape = read_with_tape(input.val, cartesian, cotangent.dinputs)
+    value, tape = read_with_tape(input.val, cartesian)
     primal = EnzymeRules.needs_primal(config) ? value : nothing
     return EnzymeRules.AugmentedReturn(primal, nothing, tape)
 end
@@ -226,20 +226,21 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     callable = expr.fun
     fun(args...) = callable(args...)
     _, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
-    accumulate_inputs!(cotangent.dinputs, input_partials, value, cartesian...)
+    accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
 
-@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, value, indices...) = nothing
+@prop accumulate_inputs!(::Tuple{}, ::Tuple{}, ::Tuple{}, value, indices...) = nothing
 
-@prop function accumulate_inputs!((dinput, dinputs...), (partial, partials...), value, indices...)
+@prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...),
+                                  (partial, partials...), value, indices...)
     contribution = value * partial
-    if eltype(dinput) <: Integer
+    if eltype(input) <: Integer || dinput === input
         nothing
     else
         dinput[indices...] += contribution
     end
-    accumulate_inputs!(dinputs, partials, value, indices...)
+    accumulate_inputs!(inputs, dinputs, partials, value, indices...)
 end
 
 end
