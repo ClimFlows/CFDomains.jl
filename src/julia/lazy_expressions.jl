@@ -7,8 +7,9 @@ using Base:@propagate_inbounds as @prop
     @lazy f(inputs...; params...) = expression
 
 Define a lazy array expression from positional array inputs and optional
-keyword parameters. Inputs must be arrays, not other lazy expressions, and the
-scalar result must have the same floating-point precision as the inputs.
+keyword parameters. Inputs must be floating-point arrays, not other lazy
+expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+result must have the same floating-point precision as the inputs.
 Automatic differentiation treats positional inputs as differentiable data and
 `params` as constants, including when a parameter is an array. Pass an array
 as a positional input when it should receive a cotangent.
@@ -41,9 +42,9 @@ const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 """
     lazy_expr(fun, inputs, params)
 
-Construct a lazy array expression. Inputs must be arrays, not lazy expressions,
-and the scalar result must have the same floating-point precision as the input
-arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
+Construct a lazy array expression. Inputs must be floating-point arrays, not lazy
+expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+result must have the same floating-point precision as the input arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
 are constants and do not receive cotangents. Violating these requirements has
 undefined behavior and may cause an error or incorrect gradients.
 """
@@ -54,8 +55,9 @@ end
 
 """
 A lazy array computed elementwise from `inputs` and `params`. Inputs are
-arrays, not lazy expressions; the scalar result must have the same
-floating-point precision as the inputs. Automatic differentiation treats
+floating-point arrays, not lazy expressions. The scalar function must accept
+ForwardDiff `Dual` values, and its result must have the same floating-point
+precision as the inputs. Automatic differentiation treats
 array-valued `inputs` as differentiable and `params` as constants. Violating
 these requirements has undefined behavior and may cause an error or incorrect
 gradients.
@@ -142,10 +144,7 @@ result must preserve input precision; violations have undefined behavior and
 may cause an error or incorrect gradients. Parameters are constants and do not
 receive cotangents. A `LazyExpression` stored in `params` is unsupported.
 Mixed-precision or complex-valued expressions, and differentiable arrays
-captured by `fun`, are not handled. A scalar callable whose method signature
-rejects ForwardDiff dual values uses an Enzyme fallback; a generic callable
-that accepts duals but calls a dual-incompatible helper is unsupported because
-detecting that case would require executing it before selecting a fallback.
+captured by `fun`, are not handled. The scalar function must accept ForwardDiff `Dual` values.
 Pass differentiable arrays as explicit lazy inputs.
 
 This method is available when both Enzyme and ForwardDiff are loaded.
