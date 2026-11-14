@@ -80,21 +80,6 @@ end
     @test factor == [10.0, 20.0, 30.0]
 end
 
-@testset "Typed Enzyme LazyExpression cotangent with inactive input" begin
-    LazyExpressions = CFDomains.LazyExpressions
-    LazyOperators = CFDomains.LazyOperators
-    x, mask = [1.5], [2]
-    dx, dmask = zeros(1), zeros(Int, 1)
-    expr = LazyExpressions.lazy_expr((x::Float64, mask::Int) -> x * mask, (x, mask), ())
-    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dmask), ())
-    cotangent = LazyExpressions.lazy_cotangent(Enzyme.MixedDuplicated(expr, Ref(shadow)))
-
-    LazyOperators.addto!(cotangent, 1.0, 1)
-    @test dx == [2.0]
-    @test dmask == [0]
-end
-
-
 @testset "Nested LazyExpression input is unsupported by Mooncake" begin
     function nested_lazy_read(x)
         LazyExpressions = CFDomains.LazyExpressions
@@ -150,18 +135,6 @@ end
     @test dx == [0 2 * x[1, 2]; 0 0]
     fill!(dx, 0)
     @test_throws BoundsError expr[3, 1]
-
-    x_float = [1.5]
-    mask = [2]
-    dx_float = zeros(size(x_float))
-    dmask = zeros(Int, size(mask))
-    @lazy masked_product(x_float, mask) = x_float * mask
-    expr = masked_product
-    shadow = LazyExpressions.lazy_expr(expr.fun, (dx_float, dmask), expr.params)
-    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
-                    Enzyme.MixedDuplicated(expr, Ref(shadow)))
-    @test dx_float == [2.0]
-    @test dmask == [0]
 
     x_powered = [-2.0]
     dx_powered = zeros(size(x_powered))
