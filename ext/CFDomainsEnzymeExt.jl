@@ -63,32 +63,17 @@ struct LazyReadTape{I}
 end
 
 # Enzyme fallback for scalar callables whose method signature rejects Duals.
-# Parameters and non-floating inputs are annotated Const; inactive derivatives
-# returned as `nothing` become numeric zero partials.
-function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
-    annotations = ntuple(length(values)) do i
-        active[i] ? Active(values[i]) : Const(values[i])
-    end
+# Positional inputs are active; named parameters are constants. Inactive
+# derivatives returned as `nothing` become numeric zero partials.
+function enzyme_value_and_partials(fun, values::Tuple, ninputs::Int)
+    annotations = (ntuple(i -> Active(values[i]), ninputs)...,
+                   ntuple(i -> Const(values[ninputs + i]), length(values) - ninputs)...)
     (partials, value) = autodiff(ReverseWithPrimal, fun, Active, annotations...)
     partials = ntuple(i -> partials[i] === nothing ? zero(value) : partials[i], length(partials))
-    return value, partials
+    return value, ntuple(i -> partials[i], ninputs)
 end
 
-# Differentiate only floating-point scalar values read from explicit inputs.
-# Type-directed tuple recursion keeps seed positions and the returned partial
-# tuple concrete; all params are passed to the primal callable as constants.
-nactive_inputs(::Tuple{}) = 0
-nactive_inputs(values::Tuple{<:AbstractFloat,Vararg}) =
-    1 + nactive_inputs(Base.tail(values))
-nactive_inputs(values::Tuple{Any,Vararg{Any}}) =
-    nactive_inputs(Base.tail(values))
-
-input_activity(::Tuple{}) = ()
-input_activity(values::Tuple{<:AbstractFloat,Vararg}) =
-    (true, input_activity(Base.tail(values))...)
-input_activity(values::Tuple{Any,Vararg{Any}}) =
-    (false, input_activity(Base.tail(values))...)
-
+# The @lazy contract guarantees every positional input is floating-point.
 function seed_input_values(::Tuple{}, ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
     ()
 end
@@ -99,11 +84,6 @@ function seed_input_values(values::Tuple{<:AbstractFloat,Vararg},
     dual = FD.Dual{Tag}(value, seed_partials)
     return (dual, seed_input_values(Base.tail(values), Val(N), Val(I + 1), Tag)...)
 end
-function seed_input_values(values::Tuple{Any,Vararg{Any}},
-                           ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
-    return (first(values), seed_input_values(Base.tail(values), Val(N), Val(I), Tag)...)
-end
-
 function input_partials(::Tuple{}, result::FD.Dual, ::Val{I}, zero_value) where {I}
     ()
 end
@@ -112,27 +92,16 @@ function input_partials(values::Tuple{<:AbstractFloat,Vararg}, result::FD.Dual,
     partial = result.partials.values[I]
     return (partial, input_partials(Base.tail(values), result, Val(I + 1), zero_value)...)
 end
-function input_partials(values::Tuple{Any,Vararg{Any}}, result::FD.Dual,
-                        ::Val{I}, zero_value) where {I}
-    return (zero_value, input_partials(Base.tail(values), result, Val(I), zero_value)...)
-end
-
 function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_fun=fun)
-    nactive = nactive_inputs(inputs)
-    if iszero(nactive)
-        value = fun(inputs..., params...)
-        return value, ntuple(_ -> zero(value), length(inputs))
-    end
-
-    dual_inputs = seed_input_values(inputs, Val(nactive), Val(1), typeof(fun))
+    ninputs = length(inputs)
+    dual_inputs = seed_input_values(inputs, Val(ninputs), Val(1), typeof(fun))
     dual_args = (dual_inputs..., params...)
 
     # Select Enzyme before calling the scalar function when its method signature
     # rejects Duals. Do not catch an internal MethodError and retry: a callable
     # may have side effects before reaching the incompatible helper.
     if !applicable(fallback_fun, dual_args...)
-        active = (input_activity(inputs)..., ntuple(_ -> false, length(params))...)
-        return enzyme_value_and_partials(fallback_fun, (inputs..., params...), active)
+        return enzyme_value_and_partials(fallback_fun, (inputs..., params...), ninputs)
     end
 
     result = fun(dual_args...)
@@ -167,7 +136,7 @@ end
 @prop function accumulate_taped_inputs!((input, inputs...), (dinput, dinputs...),
                                         (partial, partials...), value, indices...)
     contribution = value * partial
-    if eltype(input) <: Integer || dinput === input
+    if dinput === input
         nothing
     else
         dinput[indices...] += contribution
@@ -243,7 +212,7 @@ end
 @prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...),
                                   (partial, partials...), value, indices...)
     contribution = value * partial
-    if eltype(input) <: Integer || dinput === input
+    if dinput === input
         nothing
     else
         dinput[indices...] += contribution
