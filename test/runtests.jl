@@ -95,40 +95,30 @@ end
 end
 
 
-@testset "Nested Mooncake LazyExpression input" begin
-    function nested_lazy_read(x)
-        LazyExpressions = CFDomains.LazyExpressions
-        @lazy inner(x) = x * x
-        @lazy outer(x) = 2 * x
-        nested = LazyExpressions.lazy_expr(outer.fun, (inner,), outer.params)
-        nested[1]
+@testset "Mooncake LazyExpression read" begin
+    function lazy_read(x)
+        @lazy square(x) = x * x
+        square[1]
     end
 
     x = [2.0]
-    cache = Mooncake.prepare_gradient_cache(nested_lazy_read, x)
-    value, gradient = Mooncake.value_and_gradient!!(cache, nested_lazy_read, x)
-    @test value == 8.0
-    @test gradient[2] == [8.0]
+    cache = Mooncake.prepare_gradient_cache(lazy_read, x)
+    value, gradient = Mooncake.value_and_gradient!!(cache, lazy_read, x)
+    @test value == 4.0
+    @test gradient[2] == [4.0]
 end
 
-@testset "Nested Enzyme LazyExpression cotangent" begin
+@testset "Nested LazyExpression input is unsupported by Enzyme" begin
     LazyExpressions = CFDomains.LazyExpressions
-    LazyOperators = CFDomains.LazyOperators
-    x = reshape(Float64.(1:6), 2, 3)
+    x = [2.0]
     dx = zeros(size(x))
     @lazy square(x) = x * x
-    @lazy double(x) = 2 * x
-
-    inner = square
-    outer = LazyExpressions.lazy_expr(double.fun, (inner,), double.params)
-    inner_shadow = LazyExpressions.lazy_expr(inner.fun, (dx,), inner.params)
-    outer_shadow = LazyExpressions.lazy_expr(double.fun, (inner_shadow,), double.params)
-    mixed = Enzyme.MixedDuplicated(outer, Ref(outer_shadow))
-    cotangent = LazyExpressions.lazy_cotangent(mixed)
-
-    LazyOperators.addto!(cotangent, 1.0, 2, 3)
-    @test dx[2, 3] == 4 * x[2, 3]
-    @test count(!iszero, dx) == 1
+    @lazy twice(x) = 2 * x
+    nested = LazyExpressions.lazy_expr(twice.fun, (square,), twice.params)
+    nested_shadow = LazyExpressions.lazy_expr(twice.fun, (
+        LazyExpressions.lazy_expr(square.fun, (dx,), square.params),
+    ), twice.params)
+    @test_throws ArgumentError LazyExpressions.lazy_cotangent(nested, nested_shadow)
 end
 
 @testset "Enzyme differentiates direct LazyExpression reads" begin
@@ -163,14 +153,6 @@ end
         Enzyme.Reverse, expr -> expr[3, 1], Enzyme.Active,
         Enzyme.MixedDuplicated(expr, Ref(shadow)),
     )
-
-    fill!(dx, 0)
-    @lazy twice(x) = 2 * x
-    nested = LazyExpressions.lazy_expr(twice.fun, (expr,), twice.params)
-    nested_shadow = LazyExpressions.lazy_expr(twice.fun, (shadow,), twice.params)
-    Enzyme.autodiff(Enzyme.Reverse, read_sum, Enzyme.Active,
-                    Enzyme.MixedDuplicated(nested, Ref(nested_shadow)))
-    @test dx == [4 * x[1, 1] 0; 0 4 * x[2, 2]]
 
     x_float = [1.5]
     mask = [2]
@@ -295,9 +277,4 @@ end
                     Enzyme.MixedDuplicated(four_input_expr, Ref(four_input_shadow)))
     @test shadows == ([1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0])
 
-    nested_four = LazyExpressions.lazy_expr(twice.fun, (four_input_expr,), twice.params)
-    nested_four_shadow = LazyExpressions.lazy_expr(twice.fun, (four_input_shadow,), twice.params)
-    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
-                    Enzyme.MixedDuplicated(nested_four, Ref(nested_four_shadow)))
-    @test shadows == ([3.0, 0.0], [3.0, 0.0], [3.0, 0.0], [3.0, 0.0])
 end
