@@ -152,6 +152,9 @@ end
     callable = expr.fun
     fun(args...) = callable(args...)
     value, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
+    T = eltype(expr)
+    value = convert(T, value)
+    input_partials = map(partial -> convert(T, partial), input_partials)
     return value, LazyReadTape(input_partials)
 end
 
@@ -192,8 +195,7 @@ end
     cartesian = scalar_cartesian_indices(input.val, map(index -> index.val, indices))
     cotangent = lazy_cotangent(input)
     value, tape = read_with_tape(input.val, cartesian)
-    primal = EnzymeRules.needs_primal(config) ? value : nothing
-    return EnzymeRules.AugmentedReturn(primal, nothing, tape)
+    return EnzymeRules.AugmentedReturn(value, nothing, tape)
 end
 
 @prop function EnzymeRules.reverse(
