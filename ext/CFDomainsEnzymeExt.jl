@@ -62,8 +62,7 @@ struct LazyReadTape{I}
 end
 
 function scalar_value_and_partials(fun, inputs::Tuple)
-    value, partials = pdv(fun, inputs...)
-    return value, partials isa Tuple ? partials : (partials,)
+    return pdv(fun, inputs...)
 end
 
 @prop function read_with_tape(expr::LazyExpression{T}, indices::Tuple) where {T}
