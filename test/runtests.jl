@@ -149,10 +149,7 @@ end
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx == [0 2 * x[1, 2]; 0 0]
     fill!(dx, 0)
-    @test_throws BoundsError Enzyme.autodiff(
-        Enzyme.Reverse, expr -> expr[3, 1], Enzyme.Active,
-        Enzyme.MixedDuplicated(expr, Ref(shadow)),
-    )
+    @test_throws BoundsError expr[3, 1]
 
     x_float = [1.5]
     mask = [2]
