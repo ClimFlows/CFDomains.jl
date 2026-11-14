@@ -128,6 +128,15 @@ end
     @test dx == [2 * x[1, 1] 0; 0 2 * x[2, 2]]
     @test expr[CartesianIndex(1), 2] == x[1, 2]^2
     fill!(dx, 0)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1, CartesianIndex(2)], Enzyme.Active,
+                    Enzyme.MixedDuplicated(expr, Ref(shadow)))
+    @test dx == [0 2 * x[1, 2]; 0 0]
+    fill!(dx, 0)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[CartesianIndex(1), CartesianIndex(2)],
+                    Enzyme.Active, Enzyme.MixedDuplicated(expr, Ref(shadow)))
+    @test dx == [0 2 * x[1, 2]; 0 0]
+    fill!(dx, 0)
+    fill!(dx, 0)
     Enzyme.autodiff(Enzyme.Reverse, expr -> expr[CartesianIndex(1), 2], Enzyme.Active,
                     Enzyme.MixedDuplicated(expr, Ref(shadow)))
     @test dx == [0 2 * x[1, 2]; 0 0]
