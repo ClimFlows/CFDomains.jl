@@ -1,7 +1,7 @@
 function loop_FD1(mgr, fun::Fun, fa, a) where Fun
     @with mgr, let irange = eachindex(fa)
         @vec for i in irange
-            _, fa[i] = pdv(fun, a[i])
+            _, (fa[i],) = pdv(fun, a[i])
         end
     end
 end
