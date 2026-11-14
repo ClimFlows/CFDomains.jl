@@ -71,6 +71,7 @@ function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
         active[i] ? Active(values[i]) : Const(values[i])
     end
     (partials, value) = autodiff(ReverseWithPrimal, fun, Active, annotations...)
+    partials = ntuple(i -> partials[i] === nothing ? zero(value) : partials[i], length(partials))
     return value, partials
 end
 
