@@ -79,6 +79,20 @@ end
     @test factor == [10.0, 20.0, 30.0]
 end
 
+@testset "Typed Enzyme LazyExpression cotangent with inactive input" begin
+    LazyExpressions = CFDomains.LazyExpressions
+    LazyOperators = CFDomains.LazyOperators
+    x, mask = [1.5], [2]
+    dx, dmask = zeros(1), zeros(Int, 1)
+    expr = LazyExpressions.lazy_expr((x::Float64, mask::Int) -> x * mask, (x, mask), ())
+    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dmask), ())
+    cotangent = LazyExpressions.lazy_cotangent(Enzyme.MixedDuplicated(expr, Ref(shadow)))
+
+    LazyOperators.addto!(cotangent, 1.0, 1)
+    @test dx == [2.0]
+    @test dmask == [0]
+end
+
 @testset "Nested Enzyme LazyExpression cotangent" begin
     LazyExpressions = CFDomains.LazyExpressions
     LazyOperators = CFDomains.LazyOperators
