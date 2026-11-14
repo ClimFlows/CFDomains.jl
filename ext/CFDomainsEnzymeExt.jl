@@ -62,6 +62,18 @@ struct LazyReadTape{I,C}
     children::C
 end
 
+# Enzyme fallback for scalar callables whose method signature rejects Duals.
+# Parameters and non-floating inputs are annotated Const; inactive derivatives
+# returned as `nothing` become numeric zero partials.
+function enzyme_value_and_partials(fun, values::Tuple, active::Tuple)
+    annotations = ntuple(length(values)) do i
+        active[i] ? Active(values[i]) : Const(values[i])
+    end
+    (partials, value) = autodiff(ReverseWithPrimal, fun, Active, annotations...)
+    partials = ntuple(i -> partials[i] === nothing ? zero(value) : partials[i], length(partials))
+    return value, partials
+end
+
 # Differentiate only floating-point scalar values read from explicit inputs.
 # Type-directed tuple recursion keeps seed positions and the returned partial
 # tuple concrete; all params are passed to the primal callable as constants.
@@ -144,8 +156,6 @@ end
     return value, LazyReadTape(input_partials, children)
 end
 
-# Input activity depends on the input scalar type, not on runtime aliasing
-# between primal and shadow arrays. This keeps the partial tuple concrete.
 @prop read_input_with_tape(input::AbstractArray, dinput, indices::Tuple) =
     (@inbounds input[indices...], nothing)
 @prop read_input_with_tape(input::LazyExpression, dinput::LazyExpression, indices::Tuple) =
