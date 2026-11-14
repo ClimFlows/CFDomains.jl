@@ -195,7 +195,11 @@ end
     cotangent = lazy_cotangent(input)
     value, tape = read_with_tape(input.val, cartesian)
     value = value::eltype(input.val)
-    return EnzymeRules.AugmentedReturn{typeof(value),Nothing,typeof(tape)}(value, nothing, tape)
+    if EnzymeRules.needs_primal(config)
+        return EnzymeRules.AugmentedReturn{typeof(value),Nothing,typeof(tape)}(value, nothing, tape)
+    else
+        return EnzymeRules.AugmentedReturn{Nothing,Nothing,typeof(tape)}(nothing, nothing, tape)
+    end
 end
 
 @prop function EnzymeRules.reverse(
