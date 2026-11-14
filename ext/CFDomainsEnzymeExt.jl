@@ -78,7 +78,7 @@ end
 # Compute the local scalar pullback data once in the primal pass. The mask
 # marks only active input values; params are appended as constants. Cache the
 # resulting input partials in LazyReadTape for the matching reverse read.
-function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_differentiable_scalar, values))
+function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_differentiable_scalar, values), fallback_fun=fun)
     active = ntuple(i -> active[i] && is_differentiable_scalar(values[i]), length(values))
     nactive = count(identity, active)
     if iszero(nactive)
@@ -103,7 +103,7 @@ function scalar_value_and_partials(fun, values::Tuple, active::Tuple=map(is_diff
     # Select Enzyme before calling the scalar function when its method
     # signature rejects Duals. Do not catch an internal MethodError and retry:
     # a callable may have side effects before reaching the incompatible helper.
-    applicable(fun, dual_values...) || return enzyme_value_and_partials(fun, values, active)
+    applicable(fallback_fun, dual_values...) || return enzyme_value_and_partials(fallback_fun, values, active)
     result = fun(dual_values...)
     if result isa FD.Dual
         output_partials = ntuple(
@@ -124,8 +124,9 @@ end
     params = map(param -> get(param, indices...), expr.params)
     active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
-    fun = expr.fun
-    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
+    callable = expr.fun
+    fun(args...) = callable(args...)
+    value, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...), callable)
     input_partials = ntuple(i -> partials[i], length(inputs))
     return value, LazyReadTape(input_partials, children)
 end
@@ -210,10 +211,11 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     cartesian = cartesian_indices(expr, indices)
     inputs = map(input -> get(input, cartesian...), expr.inputs)
     params = map(param -> get(param, cartesian...), expr.params)
-    fun = expr.fun
+    callable = expr.fun
+    fun(args...) = callable(args...)
     active_inputs = map(is_differentiable_scalar, inputs)
     inactive_params = ntuple(_ -> false, length(params))
-    _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...))
+    _, partials = scalar_value_and_partials(fun, (inputs..., params...), (active_inputs..., inactive_params...), callable)
     input_partials = ntuple(i -> partials[i], length(inputs))
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
