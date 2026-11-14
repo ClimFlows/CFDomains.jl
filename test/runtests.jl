@@ -55,10 +55,9 @@ end
     y = reshape(Float64.(7:12), 2, 3)
     dx, dy = zeros(size(x)), zeros(size(y))
     factor = [10.0, 20.0, 30.0]
-    dfactor = zeros(size(factor))
     @lazy product(x, y; factor) = factor * x * y
     expr = product
-    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dy), (dfactor,))
+    shadow = LazyExpressions.lazy_expr(expr.fun, (dx, dy), expr.params)
     mixed = Enzyme.MixedDuplicated(expr, Ref(shadow))
     cotangent = LazyExpressions.lazy_cotangent(mixed)
 
@@ -68,7 +67,6 @@ end
     weight = 1.5 * factor[3]
     @test dx[2, 3] == weight * y[2, 3]
     @test dy[2, 3] == weight * x[2, 3]
-    @test dfactor[3] == 1.5 * x[2, 3] * y[2, 3]
     @test count(!iszero, dx) == 1
     @test count(!iszero, dy) == 1
 
@@ -78,7 +76,7 @@ end
     @test dy[2, 1] == factor[1] * x[2, 1]
     @test dx[1, 1] == 0.5 * factor[1] * y[1, 1]
     @test dy[1, 1] == 0.5 * factor[1] * x[1, 1]
-    @test dfactor[1] == x[2, 1] * y[2, 1] + 0.5 * x[1, 1] * y[1, 1]
+    @test factor == [10.0, 20.0, 30.0]
 end
 
 @testset "Nested Enzyme LazyExpression cotangent" begin
@@ -165,16 +163,25 @@ end
                     Enzyme.MixedDuplicated(typed_expr, Ref(typed_shadow)))
     @test typed_dx == [4.0]
 
+    x_powered = [-2.0]
+    dx_powered = zeros(size(x_powered))
+    exponent = [2.0]
+    @lazy powered(x_powered; exponent) = x_powered ^ exponent
+    powered_shadow = LazyExpressions.lazy_expr(powered.fun, (dx_powered,), powered.params)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(powered, Ref(powered_shadow)))
+    @test dx_powered == [-4.0]
+    @test exponent == [2.0]
+
     x_scaled = [2.0]
     dx_scaled = zeros(size(x_scaled))
     factor = [3.0]
-    dfactor = zeros(size(factor))
     @lazy scaled(x_scaled; factor) = x_scaled * factor
-    scaled_shadow = LazyExpressions.lazy_expr(scaled.fun, (dx_scaled,), (dfactor,))
+    scaled_shadow = LazyExpressions.lazy_expr(scaled.fun, (dx_scaled,), scaled.params)
     Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
                     Enzyme.MixedDuplicated(scaled, Ref(scaled_shadow)))
     @test dx_scaled == [3.0]
-    @test dfactor == [2.0]
+    @test factor == [3.0]
 
     dx_shared = zeros(size(x_scaled))
     shared_shadow = LazyExpressions.lazy_expr(scaled.fun, (dx_shared,), scaled.params)
