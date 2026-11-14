@@ -126,15 +126,16 @@ function pdv end
 Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
 mode. `shadow` is the Enzyme shadow expression; contributions written to the
 cotangent are accumulated in its input arrays without allocating a full-sized
-cotangent array. Direct scalar reads support homogeneous real floating-point input arrays.
-Parameters are constants and do not receive cotangents, whether they are
-scalars or arrays. Mixed-precision or complex-valued expressions, and
-differentiable arrays captured by `fun`, are not handled. A scalar callable
-whose method signature rejects ForwardDiff dual values uses an Enzyme fallback;
-a generic callable that accepts duals but calls a dual-incompatible helper is
-unsupported because detecting that case would require executing it before
-selecting a fallback. Parameters that are themselves `LazyExpression`s are
-also unsupported. Pass differentiable arrays as explicit lazy inputs.
+cotangent array. Direct scalar reads support homogeneous real floating-point input arrays,
+including nested `LazyExpression` values passed as explicit inputs. Parameters
+are constants and do not receive cotangents, whether they are scalars or arrays;
+a `LazyExpression` stored in `params` is unsupported. Mixed-precision or
+complex-valued expressions, and differentiable arrays captured by `fun`, are
+not handled. A scalar callable whose method signature rejects ForwardDiff dual
+values uses an Enzyme fallback; a generic callable that accepts duals but calls
+a dual-incompatible helper is unsupported because detecting that case would
+require executing it before selecting a fallback. Pass differentiable arrays
+as explicit lazy inputs.
 
 This method is available when both Enzyme and ForwardDiff are loaded.
 """
