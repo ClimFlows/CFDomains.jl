@@ -62,17 +62,6 @@ struct LazyReadTape{I}
     input_partials::I
 end
 
-# Enzyme fallback for scalar callables whose method signature rejects Duals.
-# Positional inputs are active; named parameters are constants. Inactive
-# derivatives returned as `nothing` become numeric zero partials.
-function enzyme_value_and_partials(fun, values::Tuple, ninputs::Int)
-    annotations = (ntuple(i -> Active(values[i]), ninputs)...,
-                   ntuple(i -> Const(values[ninputs + i]), length(values) - ninputs)...)
-    (partials, value) = autodiff(ReverseWithPrimal, fun, Active, annotations...)
-    partials = ntuple(i -> partials[i] === nothing ? zero(value) : partials[i], length(partials))
-    return value, ntuple(i -> partials[i], ninputs)
-end
-
 # The @lazy contract guarantees every positional input is floating-point.
 function seed_input_values(::Tuple{}, ::Val{N}, ::Val{I}, ::Type{Tag}) where {N,I,Tag}
     ()
@@ -92,35 +81,25 @@ function input_partials(values::Tuple{<:AbstractFloat,Vararg}, result::FD.Dual,
     partial = result.partials.values[I]
     return (partial, input_partials(Base.tail(values), result, Val(I + 1), zero_value)...)
 end
-function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple, fallback_fun=fun)
+function scalar_value_and_partials(fun, inputs::Tuple, params::Tuple)
     ninputs = length(inputs)
     dual_inputs = seed_input_values(inputs, Val(ninputs), Val(1), typeof(fun))
-    dual_args = (dual_inputs..., params...)
-
-    # Select Enzyme before calling the scalar function when its method signature
-    # rejects Duals. Do not catch an internal MethodError and retry: a callable
-    # may have side effects before reaching the incompatible helper.
-    if !applicable(fallback_fun, dual_args...)
-        return enzyme_value_and_partials(fallback_fun, (inputs..., params...), ninputs)
-    end
-
-    result = fun(dual_args...)
+    result = fun(dual_inputs..., params...)
     if result isa FD.Dual
         value = FD.value(result)
         partials = input_partials(inputs, result, Val(1), zero(value))
         return value, partials
     else
-        return result, ntuple(_ -> zero(result), length(inputs))
+        return result, ntuple(_ -> zero(result), ninputs)
     end
 end
-
 @prop function read_with_tape(expr::LazyExpression{T}, indices::Tuple) where {T}
     @boundscheck foreach(input -> checkbounds(input, indices...), expr.inputs)
     inputs = map(input -> (@inbounds input[indices...]), expr.inputs)
     params = map(param -> get(param, indices...), expr.params)
     callable = expr.fun
     fun(args...) = callable(args...)
-    value, input_partials = scalar_value_and_partials(fun, inputs, params, callable)
+    value, input_partials = scalar_value_and_partials(fun, inputs, params)
     value = convert(T, value)
     input_partials = map(partial -> convert(T, partial), input_partials)
     return value, LazyReadTape(input_partials)
