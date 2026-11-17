@@ -7,8 +7,8 @@ using Base:@propagate_inbounds as @prop
     @lazy f(inputs...; params...) = expression
 
 Define a lazy array expression from positional array inputs and optional
-keyword parameters. Inputs must be floating-point arrays, not other lazy
-expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+keyword parameters. Inputs may include other lazy expressions. The scalar
+function must accept ForwardDiff `Dual` values, and its
 result must have the same floating-point precision as the inputs.
 Automatic differentiation treats positional inputs as differentiable data and
 `params` as constants, including when a parameter is an array. Pass an array
@@ -42,8 +42,8 @@ const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 """
     lazy_expr(fun, inputs, params)
 
-Construct a lazy array expression. Inputs must be floating-point arrays, not lazy
-expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+Construct a lazy array expression. Inputs may include other lazy expressions.
+The scalar function must accept ForwardDiff `Dual` values, and its
 result must have the same floating-point precision as the input arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
 are constants and do not receive cotangents. Violating these requirements has
 undefined behavior and may cause an error or incorrect gradients.
@@ -54,8 +54,8 @@ function lazy_expr(fun::Fun, inputs::Arrays{N}, params) where {Fun, N}
 end
 
 """
-A lazy array computed elementwise from `inputs` and `params`. Inputs are
-floating-point arrays, not lazy expressions. The scalar function must accept
+A lazy array computed elementwise from `inputs` and `params`. Inputs may include
+other lazy expressions. The scalar function must accept
 ForwardDiff `Dual` values, and its result must have the same floating-point
 precision as the inputs. Automatic differentiation treats
 array-valued `inputs` as differentiable and `params` as constants. Violating
@@ -76,24 +76,17 @@ function adapt_structure(adapt_field, to, lazy::LazyExpression{T,N}) where {T,N}
 end
 
 @inline function cartesian_indices(lazy::LazyExpression{T,N}, indices::Tuple) where {T,N}
-    M = length(indices)
-    if M == N && all(index -> index isa Integer, indices)
-        return indices
-    elseif M == 1 && only(indices) isa CartesianIndex
-        return Tuple(only(indices))
-    elseif M == 1
-        return Tuple(CartesianIndices(size(lazy))[only(indices)])
-    elseif M > N && all(isone, indices[(N + 1):M])
-        return ntuple(i -> indices[i], N)
+    expanded = Tuple(Iterators.flatten(map(index -> index isa CartesianIndex ? Tuple(index) : (index,), indices)))
+    M = length(expanded)
+    if M == N && all(index -> index isa Integer, expanded)
+        return expanded
+    elseif M == 1 && only(expanded) isa Integer
+        return Tuple(CartesianIndices(size(lazy))[only(expanded)])
+    elseif M > N && all(isone, expanded[(N + 1):M])
+        return ntuple(i -> expanded[i], N)
     else
         throw(BoundsError(lazy, indices))
     end
-end
-
-@inline function cartesian_indices(
-    lazy::LazyExpression, indices::Tuple{CartesianIndex{M},Vararg{Integer}},
-) where {M}
-    return cartesian_indices(lazy, (Tuple(first(indices))..., Base.tail(indices)...))
 end
 
 @prop function Base.getindex(lazy::LazyExpression{T,N}, indices::Vararg{Integer,M}) where {T,N,M}
@@ -138,8 +131,8 @@ function pdv end
 Return a write-through cotangent for a `LazyExpression` during Enzyme reverse
 mode. `shadow` is the Enzyme shadow expression; contributions written to the
 cotangent are accumulated in its input arrays without allocating a full-sized
-cotangent array. Direct scalar reads support homogeneous real floating-point
-array inputs. Inputs must not themselves be lazy expressions, and the scalar
+cotangent array. Nested lazy-expression inputs are traversed recursively. Direct
+scalar reads support homogeneous real floating-point array inputs, and the scalar
 result must preserve input precision; violations have undefined behavior and
 may cause an error or incorrect gradients. Parameters are constants and do not
 receive cotangents. A `LazyExpression` stored in `params` is unsupported.

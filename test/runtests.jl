@@ -80,6 +80,26 @@ end
     @test factor == [10.0, 20.0, 30.0]
 end
 
+@testset "Nested Enzyme LazyExpression cotangent" begin
+    LazyExpressions = CFDomains.LazyExpressions
+    LazyOperators = CFDomains.LazyOperators
+    x = reshape(Float64.(1:6), 2, 3)
+    dx = zeros(size(x))
+    @lazy square(x) = x * x
+    @lazy double(x) = 2 * x
+
+    inner = square
+    outer = LazyExpressions.lazy_expr(double.fun, (inner,), double.params)
+    inner_shadow = LazyExpressions.lazy_expr(inner.fun, (dx,), inner.params)
+    outer_shadow = LazyExpressions.lazy_expr(double.fun, (inner_shadow,), double.params)
+    mixed = Enzyme.MixedDuplicated(outer, Ref(outer_shadow))
+    cotangent = LazyExpressions.lazy_cotangent(mixed)
+
+    LazyOperators.addto!(cotangent, 1.0, 2, 3)
+    @test dx[2, 3] == 4 * x[2, 3]
+    @test count(!iszero, dx) == 1
+end
+
 @testset "Mooncake unary LazyExpression accumulation" begin
     LazyExpressions = CFDomains.LazyExpressions
     MooncakeExt = Base.get_extension(CFDomains, :CFDomainsMooncakeExt)
@@ -101,7 +121,7 @@ end
     @test_throws MethodError Mooncake.prepare_gradient_cache(nested_lazy_read, x)
 end
 
-@testset "Nested LazyExpression input is unsupported by Enzyme" begin
+@testset "Nested LazyExpression input works with Enzyme" begin
     LazyExpressions = CFDomains.LazyExpressions
     x = [2.0]
     dx = zeros(size(x))
@@ -111,7 +131,9 @@ end
     nested_shadow = LazyExpressions.lazy_expr(twice.fun, (
         LazyExpressions.lazy_expr(square.fun, (dx,), square.params),
     ), twice.params)
-    @test_throws ArgumentError LazyExpressions.lazy_cotangent(nested, nested_shadow)
+    Enzyme.autodiff(Enzyme.Reverse, expr -> expr[1], Enzyme.Active,
+                    Enzyme.MixedDuplicated(nested, Ref(nested_shadow)))
+    @test dx == [4.0]
 end
 
 @testset "Enzyme differentiates direct LazyExpression reads" begin

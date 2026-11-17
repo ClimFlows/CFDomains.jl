@@ -26,8 +26,6 @@ function lazy_cotangent(expr::LazyExpression{T,N}, shadow::LazyExpression{T,N}) 
         throw(DimensionMismatch("lazy expression and shadow input counts differ"))
     length(expr.params) == length(shadow.params) ||
         throw(DimensionMismatch("lazy expression and shadow parameter counts differ"))
-    any(input -> input isa LazyExpression, expr.inputs) &&
-        throw(ArgumentError("LazyExpression-valued inputs are unsupported by the Enzyme rule"))
     return LazyCotangent{T,N,typeof(expr),typeof(shadow.inputs)}(expr, shadow.inputs)
 end
 
@@ -38,8 +36,8 @@ lazy_cotangent(input::MixedDuplicated{<:LazyExpression}) =
 
 # The custom rule differentiates homogeneous real floating-point input arrays.
 # LazyExpression params are constants (as in Mooncake), including array-valued
-# params. Nested lazy inputs, complex/mixed-precision expressions, LazyExpression-
-# valued params, and differentiable arrays captured by `fun` are out of scope.
+# params. Complex/mixed-precision expressions, LazyExpression-valued params, and
+# differentiable arrays captured by `fun` are out of scope.
 const FloatingLazyExpression = LazyExpression{T,N,F,I,P} where {
     T<:AbstractFloat,N,F,I<:Tuple{Vararg{AbstractArray{T}}},P,
 }
@@ -135,6 +133,7 @@ Base.IndexStyle(::Type{<:LazyCotangent}) = IndexCartesian()
     callable = expr.fun
     fun(args...) = callable(args..., params...)
     _, input_partials = scalar_value_and_partials(fun, inputs)
+    input_partials = input_partials isa Tuple ? input_partials : (input_partials,)
     accumulate_inputs!(expr.inputs, cotangent.dinputs, input_partials, value, cartesian...)
     return cotangent
 end
@@ -144,8 +143,9 @@ end
 @prop function accumulate_inputs!((input, inputs...), (dinput, dinputs...),
                                   (partial, partials...), value, indices...)
     contribution = value * partial
-    if dinput === input
-        nothing
+    if input isa LazyExpression
+        nested_cotangent = lazy_cotangent(input, dinput)
+        accumulate!(nested_cotangent, contribution, indices...)
     else
         dinput[indices...] += contribution
     end
