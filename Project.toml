@@ -1,7 +1,7 @@
 name = "CFDomains"
 uuid = "3699aaca-035b-4155-96ec-eecb526248de"
 authors = ["The ClimFlows contributors"]
-version = "0.6.1"
+version = "0.6.2"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -22,7 +22,7 @@ SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 CFDomainsAdaptExt = ["Adapt"]
 CFDomainsForwardDiffExt = ["ForwardDiff"]
 CFDomainsEnzymeExt = ["Enzyme", "ForwardDiff"]
-CFDomainsMooncakeExt = ["Mooncake"]
+CFDomainsMooncakeExt = ["Mooncake", "ForwardDiff"]
 CFDomainsSIMDExt = ["ForwardDiff", "SIMD"]
 SHTnsSpheres_Ext = ["SHTnsSpheres"]
 
@@ -40,7 +40,8 @@ julia = "1.8"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Enzyme", "ForwardDiff", "Test"]
+test = ["Enzyme", "ForwardDiff", "Mooncake", "Test"]

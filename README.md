@@ -8,6 +8,15 @@
 
 ## Change Log
 
+### v0.6.2
+
+* fixed: Mooncake write-through cotangents for multidimensional lazy
+  expressions, including Cartesian and linear indexing, array-valued constant
+  parameters, and nested lazy inputs. The Mooncake extension now also loads
+  ForwardDiff, which computes its scalar partial derivatives. Gradients with
+  respect to `params` remain unsupported; pass differentiable arrays as
+  positional inputs.
+
 ### v0.6.1
 
 * new: Enzyme reverse mode differentiates direct reads from `LazyExpression`

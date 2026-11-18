@@ -2,7 +2,7 @@ module CFDomainsMooncakeExt
 
 using Base: @propagate_inbounds as @prop
 
-using CFDomains.LazyExpressions: LazyExpression, lazy_expr, pdv
+using CFDomains.LazyExpressions: LazyExpression, lazy_expr, cartesian_indices, get, pdv
 using CFDomains.LazyOperators: LazyDiagonalOp, WritableDVP
 import CFDomains.LazyOperators as Ops
 
@@ -60,16 +60,20 @@ end
 # For this we need the `rrule!!` for `LazyExpression` to return `∂y` as FData
 # which is then passed to the `rrule!!` for `op`.
 
-struct TLazyExpression{T, N, Fun, Inputs, Params} <: AbstractArray{T,N}
+struct TLazyExpression{T, N, Fun, Inputs, Params, DInputs} <: AbstractArray{T,N}
     fun :: Fun
     inputs :: Inputs
     params :: Params
-    ∂inputs :: Inputs
+    ∂inputs :: DInputs
 end
-tlazy_expr(expr::LazyExpression{T,N,F,I,P}, ∂inputs::I) where {T,N,F,I,P} = TLazyExpression{T,N,F,I,P}(expr.fun, expr.inputs, expr.params, ∂inputs)
-Base.eachindex(tlazy::TLazyExpression) = eachindex(tlazy.∂inputs...)
+tlazy_expr(expr::LazyExpression{T,N,F,I,P}, ∂inputs::DI) where {T,N,F,I,P,DI} =
+    TLazyExpression{T,N,F,I,P,DI}(expr.fun, expr.inputs, expr.params, ∂inputs)
+Base.size(tlazy::TLazyExpression) = size(tlazy.inputs[1])
+Base.axes(tlazy::TLazyExpression) = axes(tlazy.inputs[1])
+Base.IndexStyle(::Type{<:TLazyExpression}) = IndexCartesian()
 
-Mooncake.tangent_type(::Type{<:LazyExpression{T,N,F,I,P}}) where {T,N,F,I,P} = TLazyExpression{T,N,F,I,P}
+Mooncake.tangent_type(::Type{<:LazyExpression{T,N,F,I,P}}) where {T,N,F,I,P} =
+    TLazyExpression{T,N,F,I,P,Mooncake.tangent_type(I)}
 Mooncake.rdata_type(::Type{<:TLazyExpression}) = NoRData
 Mooncake.fdata_type(::Type{T}) where {T<:TLazyExpression} = T
 
@@ -82,30 +86,30 @@ function Mooncake.rrule!!(colazy::CoFunction(lazy_expr), cofun::CoDual, coinputs
     return CoDual(lazy, ∂lazy), NoPullback(colazy, cofun, coinputs, coparams)
 end
 
-@prop Ops.subfrom!(out::TLazyExpression, v, i)  = Ops.addto!(out, -v, i)
+@prop Ops.subfrom!(out::TLazyExpression, v, indices...) = Ops.addto!(out, -v, indices...)
 
-@prop function Ops.addto!(out::TLazyExpression, v, i)
-    params = get_tuple(out.params, i)
-    inputs = get_tuple(out.inputs, i)
+@prop function Ops.addto!(out::TLazyExpression, v, indices...)
+    expr = lazy_expr(out.fun, out.inputs, out.params)
+    cartesian = cartesian_indices(expr, indices)
+    params = get(out.params, cartesian...)
+    inputs = get(out.inputs, cartesian...)
     fun(ins...) = out.fun(ins..., params...)
     _, derivatives = pdv(fun, inputs...)
-    addto_lazy(i, v, out.∂inputs, derivatives)
+    partials = derivatives isa Tuple ? derivatives : (derivatives,)
+    addto_lazy!(out.∂inputs, partials, v, cartesian...)
+    return out
 end
 
-@prop geti(a::AbstractVector, i) = a[i]
-geti(a::Number, _) = a
+@prop addto_lazy!(::Tuple{}, ::Tuple{}, v, indices...) = nothing
 
-@prop get_tuple((a,)::Tuple{Any}, i) = (geti(a,i), )
-@prop get_tuple((a,b)::Tuple{Any,Any}, i) = (geti(a,i), geti(b,i))
-@prop get_tuple((a,b,c)::Tuple{Any,Any,Any}, i) = (geti(a,i), geti(b,i), geti(c,i))
-
-@prop function addto_lazy(i, v, (∂a,)::Tuple{Any}, (da,)::Tuple{Any})
-    ∂a[i] += v * da
-end
-
-@prop function addto_lazy(i, v, (∂a,∂b)::Tuple{Any,Any}, (da,db))
-    ∂a[i] += v*da
-    ∂b[i] += v*db
+@prop function addto_lazy!((∂input, ∂inputs...), (partial, partials...), v, indices...)
+    contribution = v * partial
+    if ∂input isa TLazyExpression
+        Ops.addto!(∂input, contribution, indices...)
+    else
+        ∂input[indices...] += contribution
+    end
+    addto_lazy!(∂inputs, partials, v, indices...)
 end
 
 end
