@@ -7,8 +7,9 @@ using Base:@propagate_inbounds as @prop
     @lazy f(inputs...; params...) = expression
 
 Define a lazy array expression from positional array inputs and optional
-keyword parameters. Inputs must be floating-point arrays, not other lazy
-expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+keyword parameters. Inputs must be floating-point arrays. Mooncake supports
+nested lazy inputs for write-through cotangents; Enzyme does not. The scalar
+function must accept ForwardDiff `Dual` values, and its
 result must have the same floating-point precision as the inputs.
 Automatic differentiation treats positional inputs as differentiable data and
 `params` as constants, including when a parameter is an array. Pass an array
@@ -42,8 +43,9 @@ const Arrays{N} = Tuple{Vararg{AA{N}}} # a tuple of arrays of rank N
 """
     lazy_expr(fun, inputs, params)
 
-Construct a lazy array expression. Inputs must be floating-point arrays, not lazy
-expressions. The scalar function must accept ForwardDiff `Dual` values, and its
+Construct a lazy array expression. Inputs must be floating-point arrays.
+Mooncake supports nested lazy inputs for write-through cotangents; Enzyme does
+not. The scalar function must accept ForwardDiff `Dual` values, and its
 result must have the same floating-point precision as the input arrays. Automatic differentiation propagates cotangents to `inputs`; `params`
 are constants and do not receive cotangents. Violating these requirements has
 undefined behavior and may cause an error or incorrect gradients.
@@ -55,7 +57,8 @@ end
 
 """
 A lazy array computed elementwise from `inputs` and `params`. Inputs are
-floating-point arrays, not lazy expressions. The scalar function must accept
+floating-point arrays. Mooncake supports nested lazy inputs for write-through
+cotangents; Enzyme does not. The scalar function must accept
 ForwardDiff `Dual` values, and its result must have the same floating-point
 precision as the inputs. Automatic differentiation treats
 array-valued `inputs` as differentiable and `params` as constants. Violating

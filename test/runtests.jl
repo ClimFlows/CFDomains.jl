@@ -19,6 +19,7 @@ import Mooncake
     @test adj_action_out(subfrom!) === unchanged!
 end
 include("partial_derivative.jl")
+include("mooncake_lazy.jl")
 include("zero_arrays.jl")
 
 @testset "transpose!" begin
@@ -78,27 +79,6 @@ end
     @test dx[1, 1] == 0.5 * factor[1] * y[1, 1]
     @test dy[1, 1] == 0.5 * factor[1] * x[1, 1]
     @test factor == [10.0, 20.0, 30.0]
-end
-
-@testset "Mooncake unary LazyExpression accumulation" begin
-    LazyExpressions = CFDomains.LazyExpressions
-    MooncakeExt = Base.get_extension(CFDomains, :CFDomainsMooncakeExt)
-    dx = zeros(1)
-    MooncakeExt.addto_lazy(1, 2.0, (dx,), (3.0,))
-    @test dx == [6.0]
-end
-
-@testset "Nested LazyExpression input is unsupported by Mooncake" begin
-    function nested_lazy_read(x)
-        LazyExpressions = CFDomains.LazyExpressions
-        @lazy inner(x) = x * x
-        @lazy outer(x) = 2 * x
-        nested = LazyExpressions.lazy_expr(outer.fun, (inner,), outer.params)
-        nested[1]
-    end
-
-    x = [2.0]
-    @test_throws MethodError Mooncake.prepare_gradient_cache(nested_lazy_read, x)
 end
 
 @testset "Nested LazyExpression input is unsupported by Enzyme" begin
